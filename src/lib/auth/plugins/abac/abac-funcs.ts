@@ -96,8 +96,8 @@ export async function canUserPerformAction(
 			attributes
 		);
 
-		// Step 4: Make final decision
-		const decision = makeFinalDecision(policyEvaluations);
+		// Step 4: Make final decision (now passes policies for priority lookup)
+		const decision = makeFinalDecision(policyEvaluations, applicablePolicies);
 
 		// Step 5: Log the access request
 		const processingTime = Date.now() - startTime;
@@ -566,8 +566,12 @@ function findAttributeByName(
 
 /**
  * Make final authorization decision based on policy evaluations
+ * Properly considers policy priorities
  */
-function makeFinalDecision(evaluations: PolicyEvaluation[]): {
+function makeFinalDecision(
+	evaluations: PolicyEvaluation[],
+	policies: PolicyWithRules[]
+): {
 	decision: "permit" | "deny" | "not_applicable";
 	reason: string;
 } {
@@ -578,32 +582,37 @@ function makeFinalDecision(evaluations: PolicyEvaluation[]): {
 		};
 	}
 
-	// Check for explicit DENY first (deny overrides)
-	const denyPolicies = evaluations.filter(
-		(e) => e.effect === "deny" && e.matches
-	);
-	if (denyPolicies.length > 0) {
+	// Filter to only matching policies
+	const matchingEvaluations = evaluations.filter((e) => e.matches);
+
+	if (matchingEvaluations.length === 0) {
 		return {
 			decision: "deny",
-			reason: `Denied by policy: ${denyPolicies[0].policyName}`,
+			reason: "No matching policies found",
 		};
 	}
 
-	// Check for PERMIT
-	const permitPolicies = evaluations.filter(
-		(e) => e.effect === "permit" && e.matches
-	);
-	if (permitPolicies.length > 0) {
-		return {
-			decision: "permit",
-			reason: `Permitted by policy: ${permitPolicies[0].policyName}`,
-		};
-	}
+	// Create a map of policy priorities for quick lookup
+	const policyPriorityMap = new Map<string, number>();
+	policies.forEach((p) => {
+		policyPriorityMap.set(p.policy.id, p.policy.priority);
+	});
 
-	// No matching policies
+	// Sort matching evaluations by priority (highest first)
+	const sortedEvaluations = matchingEvaluations.sort((a, b) => {
+		const priorityA = policyPriorityMap.get(a.policyId) || 0;
+		const priorityB = policyPriorityMap.get(b.policyId) || 0;
+		return priorityB - priorityA; // Descending order (highest priority first)
+	});
+
+	// Return the decision of the highest priority matching policy
+	const highestPriorityPolicy = sortedEvaluations[0];
+
 	return {
-		decision: "deny",
-		reason: "No matching permit policies found",
+		decision: highestPriorityPolicy.effect === "permit" ? "permit" : "deny",
+		reason: `${
+			highestPriorityPolicy.effect === "permit" ? "Permitted" : "Denied"
+		} by highest priority policy: ${highestPriorityPolicy.policyName}`,
 	};
 }
 
