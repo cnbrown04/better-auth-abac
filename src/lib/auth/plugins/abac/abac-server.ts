@@ -9,6 +9,7 @@ import {
 	canUserWrite,
 } from "./abac-funcs";
 import { resource } from "@/lib/db/schema";
+import { clearABACData, setupABACDatabaseComplete } from "./example-abac-stuff";
 
 interface AttributeValue {
 	id: string;
@@ -408,7 +409,7 @@ export const abac = () => {
 		},
 		endpoints: {
 			canUserPerformAction: createAuthEndpoint(
-				"/abac/canUserPerformAction",
+				"/abac/canuserperformaction",
 				{
 					method: "POST",
 					body: z.object({
@@ -429,7 +430,7 @@ export const abac = () => {
 				}
 			),
 			canUserRead: createAuthEndpoint(
-				"/abac/canUserRead",
+				"/abac/canuserread",
 				{
 					method: "POST",
 					body: z.object({
@@ -450,7 +451,7 @@ export const abac = () => {
 				}
 			),
 			canUserWrite: createAuthEndpoint(
-				"/abac/canUserWrite",
+				"/abac/canuserwrite",
 				{
 					method: "POST",
 					body: z.object({
@@ -471,7 +472,7 @@ export const abac = () => {
 				}
 			),
 			canUserDelete: createAuthEndpoint(
-				"/abac/canUserDelete",
+				"/abac/canuserdelete",
 				{
 					method: "POST",
 					body: z.object({
@@ -492,7 +493,7 @@ export const abac = () => {
 				}
 			),
 			canUserPerformActionOnResources: createAuthEndpoint(
-				"/abac/canUserPerformActionOnResources",
+				"/abac/canuserperformactiononresources",
 				{
 					method: "POST",
 					body: z.object({
@@ -515,6 +516,53 @@ export const abac = () => {
 					return {
 						decisions,
 					};
+				}
+			),
+			setupDatabase: createAuthEndpoint(
+				"/abac/setupdatabase",
+				{
+					method: "POST",
+					body: z.object({
+						userId: z.string().optional(),
+					}),
+				},
+				async (ctx) => {
+					try {
+						if (ctx.body.userId == "" || ctx.body.userId == null) {
+							console.log("User ID provided:", ctx.body.userId);
+							return {
+								message: "User ID is required to set up the database.",
+							};
+						}
+						await setupABACDatabaseComplete(ctx.body.userId);
+						return {
+							message: "ABAC plugin is working!",
+						};
+					} catch (error) {
+						return {
+							message: "Error in ABAC plugin",
+							error: String(error),
+						};
+					}
+				}
+			),
+			clearDatabase: createAuthEndpoint(
+				"/abac/cleardatabase",
+				{
+					method: "GET",
+				},
+				async (ctx) => {
+					try {
+						await clearABACData();
+						return {
+							message: "ABAC plugin is working!",
+						};
+					} catch (error) {
+						return {
+							message: "Error in ABAC plugin",
+							error: String(error),
+						};
+					}
 				}
 			),
 			testEndpoint: createAuthEndpoint(
