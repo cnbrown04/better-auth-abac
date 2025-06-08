@@ -426,12 +426,8 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 							updated_at: new Date(),
 						})
 						.execute();
-				} else {
-					console.log("User role already exists:", userRole);
 				}
 			}
-
-			console.log("ABAC Plugin Request Path:", path);
 		},
 		hooks: {
 			after: [
@@ -482,8 +478,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 												created_at: new Date(),
 											})
 											.execute();
-
-										console.log("Resource type 'user' created successfully");
 									} catch (error) {
 										// Handle duplicate resource type creation (race condition)
 
@@ -508,9 +502,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 									.executeTakeFirst();
 
 								if (existingResource) {
-									console.log(
-										`User resource already exists for user ${userId}`
-									);
 									return ctx; // Continue processing
 								}
 
@@ -527,10 +518,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 											created_at: new Date(),
 										})
 										.execute();
-
-									console.log(
-										`User resource created successfully for user ${userId}`
-									);
 								} catch (error) {
 									// Handle duplicate resource creation
 									console.error("Error creating user resource:", error);
