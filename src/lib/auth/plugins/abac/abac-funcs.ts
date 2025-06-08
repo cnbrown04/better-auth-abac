@@ -1,6 +1,5 @@
-import { db } from "./abac-config"; // Your Kysely database instance
 import type { Database } from "./database-types"; // Your Kysely schema types
-import { sql } from "kysely";
+import { Kysely, sql } from "kysely";
 
 // Types for the authorization system
 interface AuthorizationRequest {
@@ -76,16 +75,18 @@ const OPERATORS = {
  * Main authorization function - checks if a user can perform an action
  */
 export async function canUserPerformAction(
+	db: Kysely<Database>,
 	request: AuthorizationRequest
 ): Promise<AuthorizationResult> {
 	const startTime = Date.now();
 
 	try {
 		// Step 1: Gather all attributes for the request
-		const attributes = await gatherAttributes(request);
+		const attributes = await gatherAttributes(db, request);
 
 		// Step 2: Find applicable policies
 		const applicablePolicies = await findApplicablePolicies(
+			db,
 			request,
 			attributes
 		);
@@ -102,6 +103,7 @@ export async function canUserPerformAction(
 		// Step 5: Log the access request
 		const processingTime = Date.now() - startTime;
 		await logAccessRequest(
+			db,
 			request,
 			decision,
 			policyEvaluations,
@@ -133,6 +135,7 @@ export async function canUserPerformAction(
  * Gather all relevant attributes for the authorization request
  */
 async function gatherAttributes(
+	db: Kysely<Database>,
 	request: AuthorizationRequest
 ): Promise<Map<string, AttributeValue>> {
 	const attributeMap = new Map<string, AttributeValue>();
@@ -352,6 +355,7 @@ function addDynamicEnvironmentAttributes(
  * Find policies that are applicable to this request
  */
 async function findApplicablePolicies(
+	db: Kysely<Database>,
 	request: AuthorizationRequest,
 	attributes: Map<string, AttributeValue>
 ): Promise<PolicyWithRules[]> {
@@ -620,6 +624,7 @@ function makeFinalDecision(
  * Log the access request for auditing
  */
 async function logAccessRequest(
+	db: Kysely<Database>,
 	request: AuthorizationRequest,
 	decision: { decision: string; reason?: string },
 	evaluations: PolicyEvaluation[],
@@ -676,11 +681,12 @@ async function logAccessRequest(
  * Check if user can read a resource
  */
 export async function canUserRead(
+	db: Kysely<Database>,
 	userId: string,
 	resourceId: string,
 	context?: Record<string, any>
 ) {
-	return canUserPerformAction({
+	return canUserPerformAction(db, {
 		subjectId: userId,
 		resourceId,
 		actionName: "read",
@@ -692,11 +698,12 @@ export async function canUserRead(
  * Check if user can write/update a resource
  */
 export async function canUserWrite(
+	db: Kysely<Database>,
 	userId: string,
 	resourceId: string,
 	context?: Record<string, any>
 ) {
-	return canUserPerformAction({
+	return canUserPerformAction(db, {
 		subjectId: userId,
 		resourceId,
 		actionName: "write",
@@ -708,11 +715,12 @@ export async function canUserWrite(
  * Check if user can delete a resource
  */
 export async function canUserDelete(
+	db: Kysely<Database>,
 	userId: string,
 	resourceId: string,
 	context?: Record<string, any>
 ) {
-	return canUserPerformAction({
+	return canUserPerformAction(db, {
 		subjectId: userId,
 		resourceId,
 		actionName: "delete",
@@ -724,6 +732,7 @@ export async function canUserDelete(
  * Batch authorization check for multiple resources
  */
 export async function canUserPerformActionOnResources(
+	db: Kysely<Database>,
 	userId: string,
 	actionName: string,
 	resourceIds: string[],
@@ -733,7 +742,7 @@ export async function canUserPerformActionOnResources(
 
 	// Process in parallel for better performance
 	const promises = resourceIds.map(async (resourceId) => {
-		const result = await canUserPerformAction({
+		const result = await canUserPerformAction(db, {
 			subjectId: userId,
 			resourceId,
 			actionName,

@@ -1,5 +1,5 @@
 import { type BetterAuthPlugin } from "better-auth";
-import { createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
+import { createAuthEndpoint } from "better-auth/api";
 import { z } from "zod";
 import {
 	canUserDelete,
@@ -8,20 +8,10 @@ import {
 	canUserRead,
 	canUserWrite,
 } from "./abac-funcs";
-import { resource } from "@/lib/db/schema";
-import { clearABACData, setupABACDatabaseComplete } from "./example-abac-stuff";
-import { db } from "./abac-config";
-import { nanoid } from "nanoid";
+import { Kysely } from "kysely";
+import { Database } from "./database-types";
 
-interface AttributeValue {
-	id: string;
-	name: string;
-	type: string;
-	category: string;
-	value: string;
-}
-
-export const abac = () => {
+export const abac = (db: Kysely<Database>) => {
 	return {
 		id: "abac",
 		schema: {
@@ -584,7 +574,7 @@ export const abac = () => {
 				},
 				async (ctx) => {
 					// Gather attributes for the subject
-					const decision = await canUserPerformAction(ctx.body);
+					const decision = await canUserPerformAction(db, ctx.body);
 
 					return {
 						decision,
@@ -603,6 +593,7 @@ export const abac = () => {
 				},
 				async (ctx) => {
 					const decision = await canUserRead(
+						db,
 						ctx.body.userId,
 						ctx.body.resourceId,
 						ctx.body.context
@@ -624,6 +615,8 @@ export const abac = () => {
 				},
 				async (ctx) => {
 					const decision = await canUserWrite(
+						db,
+
 						ctx.body.userId,
 						ctx.body.resourceId,
 						ctx.body.context
@@ -645,6 +638,7 @@ export const abac = () => {
 				},
 				async (ctx) => {
 					const decision = await canUserDelete(
+						db,
 						ctx.body.userId,
 						ctx.body.resourceId,
 						ctx.body.context
@@ -669,6 +663,7 @@ export const abac = () => {
 					const { userId, actionName, resourceIds, context } = ctx.body;
 
 					const decisions = await canUserPerformActionOnResources(
+						db,
 						userId,
 						actionName,
 						resourceIds,
@@ -678,53 +673,6 @@ export const abac = () => {
 					return {
 						decisions,
 					};
-				}
-			),
-			setupDatabase: createAuthEndpoint(
-				"/abac/setupdatabase",
-				{
-					method: "POST",
-					body: z.object({
-						userId: z.string().optional(),
-					}),
-				},
-				async (ctx) => {
-					try {
-						if (ctx.body.userId == "" || ctx.body.userId == null) {
-							console.log("User ID provided:", ctx.body.userId);
-							return {
-								message: "User ID is required to set up the database.",
-							};
-						}
-						await setupABACDatabaseComplete(ctx.body.userId);
-						return {
-							message: "ABAC plugin is working!",
-						};
-					} catch (error) {
-						return {
-							message: "Error in ABAC plugin",
-							error: String(error),
-						};
-					}
-				}
-			),
-			clearDatabase: createAuthEndpoint(
-				"/abac/cleardatabase",
-				{
-					method: "GET",
-				},
-				async (ctx) => {
-					try {
-						await clearABACData();
-						return {
-							message: "ABAC plugin is working!",
-						};
-					} catch (error) {
-						return {
-							message: "Error in ABAC plugin",
-							error: String(error),
-						};
-					}
 				}
 			),
 			testEndpoint: createAuthEndpoint(
