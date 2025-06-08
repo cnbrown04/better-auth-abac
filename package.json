@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "better-auth-abac"
+    "url": "https://github.com/cnbrown04/better-auth-abac.git"
   },
   "author": "cnbrown04",
   "license": "ISC",
