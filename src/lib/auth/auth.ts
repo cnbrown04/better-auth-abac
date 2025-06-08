@@ -17,8 +17,9 @@ const OPTIONS = {
 	},
 } satisfies BetterAuthOptions;
 
-const abacAdapter = createAbacAdapter({
+const abacAdapter = await createAbacAdapter({
 	db: {
+		type: "mysql",
 		uri: process.env.DATABASE_URL!,
 	},
 });
