@@ -12,7 +12,7 @@ export default async function Layout({
 	});
 
 	if (!session?.user) {
-		redirect("/login");
+		return redirect("/auth/sign-in");
 	}
 
 	return (
