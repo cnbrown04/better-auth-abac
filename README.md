@@ -1,3 +1,5 @@
+# IN BETA - IN DEVELOPMENT
+
 # better-auth-abac
 
 A flexible and extensible Attribute-Based Access Control (ABAC) plugin for the Better Auth framework. This package allows developers to implement fine-grained authorization using attributes, policies, and rules with comprehensive access control validation.
