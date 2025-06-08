@@ -697,4 +697,4 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 	} satisfies BetterAuthPlugin;
 };
 
-export default abac;
+export { abac };
