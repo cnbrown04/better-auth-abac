@@ -1,5 +1,5 @@
 import { type BetterAuthPlugin } from "better-auth";
-import { createAuthEndpoint } from "better-auth/api";
+import { createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
 import { z } from "zod";
 import {
 	canUserDelete,
@@ -10,6 +10,8 @@ import {
 } from "./abac-funcs";
 import { resource } from "@/lib/db/schema";
 import { clearABACData, setupABACDatabaseComplete } from "./example-abac-stuff";
+import { db } from "./abac-config";
+import { nanoid } from "nanoid";
 
 interface AttributeValue {
 	id: string;
@@ -406,6 +408,166 @@ export const abac = () => {
 					},
 				},
 			},
+		},
+		onRequest: async (req, ctx) => {
+			const url = new URL(req.url);
+			const path = url.pathname;
+
+			if (path.startsWith("/api/auth/sign-up")) {
+				// Make sure the role object USER exists, and then insert the user
+				const userRole = await db
+					.selectFrom("role")
+					.where("id", "=", "USER")
+					.selectAll()
+					.executeTakeFirst();
+
+				if (!userRole) {
+					// If the USER role does not exist, create it
+					await db
+						.insertInto("role")
+						.values({
+							id: "USER",
+							name: "User",
+							description: "Default user role",
+							color: "#0000FF", // Default color for users
+							created_at: new Date(),
+							updated_at: new Date(),
+						})
+						.execute();
+				} else {
+					console.log("User role already exists:", userRole);
+				}
+			}
+
+			console.log("ABAC Plugin Request Path:", path);
+		},
+		hooks: {
+			after: [
+				{
+					matcher: (context) => {
+						return context.path.startsWith("/sign-up");
+					},
+					handler: async (ctx) => {
+						try {
+							const contextData = ctx as any;
+
+							// Check if user data exists in context
+							if (!contextData?.context?.returned?.user) {
+								console.warn("No user data found in context");
+								return ctx; // Continue processing even without user data
+							}
+
+							const user = contextData.context.returned.user;
+							const userId = user.id;
+
+							// Validate user ID
+							if (!userId) {
+								console.error("User ID is missing");
+								return {
+									message: "User ID is required",
+									error: "Missing user ID",
+								};
+							}
+
+							try {
+								// Check if resource type exists
+								const resourceType = await db
+									.selectFrom("resource_type")
+									.where("name", "=", "user")
+									.selectAll()
+									.executeTakeFirst();
+
+								if (!resourceType) {
+									// Create resource type if it doesn't exist
+									try {
+										await db
+											.insertInto("resource_type")
+											.values({
+												id: "user.resource_type",
+												name: "user",
+												description: "User resource type",
+												table_name: "resource",
+												created_at: new Date(),
+											})
+											.execute();
+
+										console.log("Resource type 'user' created successfully");
+									} catch (error) {
+										// Handle duplicate resource type creation (race condition)
+
+										console.error("Error creating resource type:", error);
+										return {
+											message: "Failed to create resource type",
+											error: String(error),
+										};
+									}
+								}
+
+								// Get the resource type ID (either existing or newly created)
+								const finalResourceType = resourceType || {
+									id: "user.resource_type",
+								};
+
+								// Check if user resource already exists
+								const existingResource = await db
+									.selectFrom("resource")
+									.where("id", "=", userId)
+									.selectAll()
+									.executeTakeFirst();
+
+								if (existingResource) {
+									console.log(
+										`User resource already exists for user ${userId}`
+									);
+									return ctx; // Continue processing
+								}
+
+								// Create user resource
+								try {
+									await db
+										.insertInto("resource")
+										.values({
+											id: userId,
+											resource_type_id: finalResourceType.id,
+											resource_id: userId,
+											name: user.name || user.email || "Unnamed User",
+											owner_id: userId,
+											created_at: new Date(),
+										})
+										.execute();
+
+									console.log(
+										`User resource created successfully for user ${userId}`
+									);
+								} catch (error) {
+									// Handle duplicate resource creation
+									console.error("Error creating user resource:", error);
+									return {
+										message: "Failed to create user resource",
+										error: String(error),
+										userId: userId,
+									};
+								}
+							} catch (dbError) {
+								console.error("Database operation failed:", dbError);
+								return {
+									message: "Database operation failed",
+									error: String(dbError),
+									userId: userId,
+								};
+							}
+
+							return ctx; // Return context to continue processing
+						} catch (unexpectedError) {
+							console.error("Unexpected error in handler:", unexpectedError);
+							return {
+								message: "Unexpected error occurred",
+								error: String(unexpectedError),
+							};
+						}
+					},
+				},
+			],
 		},
 		endpoints: {
 			canUserPerformAction: createAuthEndpoint(
