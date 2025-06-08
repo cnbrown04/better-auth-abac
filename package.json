@@ -2,9 +2,18 @@
   "name": "better-auth-abac",
   "version": "1.1.1-development",
   "description": "A package for ABAC in better-auth",
-  "main": "index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "semantic-release": "semantic-release"
   },
   "repository": {
@@ -14,8 +23,8 @@
   "author": "cnbrown04",
   "license": "ISC",
   "dependencies": {
-    "better-auth": "^1.2.8",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "better-auth": "^1.2.8"
   },
   "devDependencies": {
     "semantic-release": "^24.2.5"

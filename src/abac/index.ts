@@ -10,6 +10,8 @@ import {
 } from "./funcs";
 import { Kysely } from "kysely";
 import { Database } from "./database-types";
+import { abacClient } from "./client";
+import { createAbacAdapter } from "./adapter";
 
 const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 	return {
@@ -697,4 +699,4 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 	} satisfies BetterAuthPlugin;
 };
 
-export { abac };
+export { abac, abacClient, createAbacAdapter };
