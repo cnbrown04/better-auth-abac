@@ -455,11 +455,10 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 					const userRoleExists = await db
 						.selectFrom("user")
 						.where("id", "=", userId)
-						.where("role_id", "=", "USER")
 						.selectAll()
 						.executeTakeFirst();
 
-					if (!userRoleExists) {
+					if (userRoleExists?.role_id == null || userRoleExists.role_id == "") {
 						await db
 							.updateTable("user")
 							.set({
@@ -467,7 +466,7 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 								updated_at: new Date(),
 							})
 							.where("id", "=", userId)
-							.execute();
+							.executeTakeFirst();
 					}
 				}
 			}
