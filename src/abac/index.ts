@@ -22,9 +22,7 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 				fields: {
 					roleId: {
 						type: "string",
-						required: true,
 						references: { model: "role", field: "id" },
-						defaultValue: "USER",
 					},
 				},
 			},
@@ -426,6 +424,51 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 							updated_at: new Date(),
 						})
 						.execute();
+				}
+			}
+
+			if (path.startsWith("/api/auth/sign-in")) {
+				const userRole = await db
+					.selectFrom("role")
+					.where("id", "=", "USER")
+					.selectAll()
+					.executeTakeFirst();
+
+				if (!userRole) {
+					// If the USER role does not exist, create it
+					await db
+						.insertInto("role")
+						.values({
+							id: "USER",
+							name: "User",
+							description: "Default user role",
+							color: "#0000FF", // Default color for users
+							created_at: new Date(),
+							updated_at: new Date(),
+						})
+						.execute();
+				}
+
+				// Ensure the user has the USER role
+				const userId = ctx.session?.user?.id;
+				if (userId) {
+					const userRoleExists = await db
+						.selectFrom("user")
+						.where("id", "=", userId)
+						.where("role_id", "=", "USER")
+						.selectAll()
+						.executeTakeFirst();
+
+					if (!userRoleExists) {
+						await db
+							.updateTable("user")
+							.set({
+								role_id: "USER",
+								updated_at: new Date(),
+							})
+							.where("id", "=", userId)
+							.execute();
+					}
 				}
 			}
 		},
