@@ -7,7 +7,11 @@ import {
 	canUserPerformActionOnResources,
 	canUserRead,
 	canUserWrite,
+	AuthorizationRequest,
 	AuthorizationResult,
+	AttributeValue,
+	PolicyEvaluation,
+	PolicyWithRules,
 } from "./funcs";
 import { Kysely } from "kysely";
 import { Database } from "./database-types";
@@ -788,4 +792,13 @@ const abac = (db: Kysely<Database>) => {
 	} satisfies BetterAuthPlugin;
 };
 
-export { abac, abacClient, createAbacAdapter };
+export {
+	abac,
+	abacClient,
+	createAbacAdapter,
+	type AuthorizationResult,
+	type AuthorizationRequest,
+	type AttributeValue,
+	type PolicyEvaluation,
+	type PolicyWithRules,
+};
