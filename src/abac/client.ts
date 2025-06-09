@@ -1,10 +1,10 @@
 import { BetterAuthClientPlugin } from "better-auth";
-import { abac } from ".";
+import { abac } from "./index";
 
 const abacClient = () => {
 	return {
 		id: "abac-client",
-		$InferServerPlugin: {} as Awaited<ReturnType<typeof abac>>,
+		$InferServerPlugin: {} as ReturnType<typeof abac>,
 	} satisfies BetterAuthClientPlugin;
 };
 

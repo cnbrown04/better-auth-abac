@@ -7,13 +7,14 @@ import {
 	canUserPerformActionOnResources,
 	canUserRead,
 	canUserWrite,
+	AuthorizationResult,
 } from "./funcs";
 import { Kysely } from "kysely";
 import { Database } from "./database-types";
 import { abacClient } from "./client";
 import { createAbacAdapter } from "./adapter";
 
-const abac = (db: Kysely<Database>): BetterAuthPlugin => {
+const abac = (db: Kysely<Database>) => {
 	const handleUserSetup = async (userId: string) => {
 		if (!userId) return;
 
