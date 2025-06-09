@@ -1,6 +1,6 @@
 {
   "name": "better-auth-abac",
-  "version": "1.1.4-development",
+  "version": "1.1.5-development",
   "description": "A package for ABAC in better-auth",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
