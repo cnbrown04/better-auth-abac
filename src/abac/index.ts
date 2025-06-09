@@ -14,6 +14,102 @@ import { abacClient } from "./client";
 import { createAbacAdapter } from "./adapter";
 
 const abac = (db: Kysely<Database>): BetterAuthPlugin => {
+	const handleUserSetup = async (userId: string) => {
+		if (!userId) return;
+
+		try {
+			// 1. Ensure USER role exists
+			const userRole = await db
+				.selectFrom("role")
+				.where("id", "=", "USER")
+				.selectAll()
+				.executeTakeFirst();
+
+			if (!userRole) {
+				await db
+					.insertInto("role")
+					.values({
+						id: "USER",
+						name: "User",
+						description: "Default user role",
+						color: "#0000FF",
+						created_at: new Date(),
+						updated_at: new Date(),
+					})
+					.execute();
+			}
+
+			// 2. Ensure user has USER role assigned
+			const user = await db
+				.selectFrom("user")
+				.where("id", "=", userId)
+				.selectAll()
+				.executeTakeFirst();
+
+			if (user && (user.role_id == null || user.role_id == "")) {
+				await db
+					.updateTable("user")
+					.set({
+						role_id: "USER",
+						updated_at: new Date(),
+					})
+					.where("id", "=", userId)
+					.executeTakeFirst();
+			}
+
+			// 3. Ensure resource type exists
+			const resourceType = await db
+				.selectFrom("resource_type")
+				.where("name", "=", "user")
+				.selectAll()
+				.executeTakeFirst();
+
+			if (!resourceType) {
+				try {
+					await db
+						.insertInto("resource_type")
+						.values({
+							id: "user.resource_type",
+							name: "user",
+							description: "User resource type",
+							table_name: "resource",
+							created_at: new Date(),
+						})
+						.execute();
+				} catch (error) {
+					console.error("Error creating resource type:", error);
+				}
+			}
+
+			// 4. Ensure user resource exists
+			const existingResource = await db
+				.selectFrom("resource")
+				.where("id", "=", userId)
+				.selectAll()
+				.executeTakeFirst();
+
+			if (!existingResource) {
+				try {
+					await db
+						.insertInto("resource")
+						.values({
+							id: userId,
+							resource_type_id: resourceType?.id || "user.resource_type",
+							resource_id: userId,
+							name: user?.name || user?.email || "Unnamed User",
+							owner_id: userId,
+							created_at: new Date(),
+						})
+						.execute();
+				} catch (error) {
+					console.error("Error creating user resource:", error);
+				}
+			}
+		} catch (error) {
+			console.error("Error in handleUserSetup:", error);
+		}
+	};
+
 	return {
 		id: "abac",
 		schema: {
@@ -404,102 +500,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 			const url = new URL(req.url);
 			const path = url.pathname;
 
-			const handleUserSetup = async (userId: string) => {
-				if (!userId) return;
-
-				try {
-					// 1. Ensure USER role exists
-					const userRole = await db
-						.selectFrom("role")
-						.where("id", "=", "USER")
-						.selectAll()
-						.executeTakeFirst();
-
-					if (!userRole) {
-						await db
-							.insertInto("role")
-							.values({
-								id: "USER",
-								name: "User",
-								description: "Default user role",
-								color: "#0000FF",
-								created_at: new Date(),
-								updated_at: new Date(),
-							})
-							.execute();
-					}
-
-					// 2. Ensure user has USER role assigned
-					const user = await db
-						.selectFrom("user")
-						.where("id", "=", userId)
-						.selectAll()
-						.executeTakeFirst();
-
-					if (user && (user.role_id == null || user.role_id == "")) {
-						await db
-							.updateTable("user")
-							.set({
-								role_id: "USER",
-								updated_at: new Date(),
-							})
-							.where("id", "=", userId)
-							.executeTakeFirst();
-					}
-
-					// 3. Ensure resource type exists
-					const resourceType = await db
-						.selectFrom("resource_type")
-						.where("name", "=", "user")
-						.selectAll()
-						.executeTakeFirst();
-
-					if (!resourceType) {
-						try {
-							await db
-								.insertInto("resource_type")
-								.values({
-									id: "user.resource_type",
-									name: "user",
-									description: "User resource type",
-									table_name: "resource",
-									created_at: new Date(),
-								})
-								.execute();
-						} catch (error) {
-							console.error("Error creating resource type:", error);
-						}
-					}
-
-					// 4. Ensure user resource exists
-					const existingResource = await db
-						.selectFrom("resource")
-						.where("id", "=", userId)
-						.selectAll()
-						.executeTakeFirst();
-
-					if (!existingResource) {
-						try {
-							await db
-								.insertInto("resource")
-								.values({
-									id: userId,
-									resource_type_id: resourceType?.id || "user.resource_type",
-									resource_id: userId,
-									name: user?.name || user?.email || "Unnamed User",
-									owner_id: userId,
-									created_at: new Date(),
-								})
-								.execute();
-						} catch (error) {
-							console.error("Error creating user resource:", error);
-						}
-					}
-				} catch (error) {
-					console.error("Error in handleUserSetup:", error);
-				}
-			};
-
 			if (path.startsWith("/api/auth/sign-up")) {
 				// For sign-up, we'll handle this in the after hook
 				const userRole = await db
@@ -521,11 +521,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 						})
 						.execute();
 				}
-			}
-
-			if (path.startsWith("/api/auth/sign-in")) {
-				const userId = ctx.session?.user?.id;
-				await handleUserSetup(userId ?? "");
 			}
 		},
 		hooks: {
@@ -554,108 +549,51 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 								};
 							}
 
-							try {
-								// Ensure user has USER role assigned
-								const existingUser = await db
-									.selectFrom("user")
-									.where("id", "=", userId)
-									.selectAll()
-									.executeTakeFirst();
-
-								if (
-									existingUser &&
-									(existingUser.role_id == null || existingUser.role_id == "")
-								) {
-									await db
-										.updateTable("user")
-										.set({
-											role_id: "USER",
-											updated_at: new Date(),
-										})
-										.where("id", "=", userId)
-										.executeTakeFirst();
-								}
-
-								// Check if resource type exists
-								const resourceType = await db
-									.selectFrom("resource_type")
-									.where("name", "=", "user")
-									.selectAll()
-									.executeTakeFirst();
-
-								if (!resourceType) {
-									try {
-										await db
-											.insertInto("resource_type")
-											.values({
-												id: "user.resource_type",
-												name: "user",
-												description: "User resource type",
-												table_name: "resource",
-												created_at: new Date(),
-											})
-											.execute();
-									} catch (error) {
-										console.error("Error creating resource type:", error);
-										return {
-											message: "Failed to create resource type",
-											error: String(error),
-										};
-									}
-								}
-
-								const finalResourceType = resourceType || {
-									id: "user.resource_type",
-								};
-
-								// Check if user resource already exists
-								const existingResource = await db
-									.selectFrom("resource")
-									.where("id", "=", userId)
-									.selectAll()
-									.executeTakeFirst();
-
-								if (existingResource) {
-									return ctx;
-								}
-
-								// Create user resource
-								try {
-									await db
-										.insertInto("resource")
-										.values({
-											id: userId,
-											resource_type_id: finalResourceType.id,
-											resource_id: userId,
-											name: user.name || user.email || "Unnamed User",
-											owner_id: userId,
-											created_at: new Date(),
-										})
-										.execute();
-								} catch (error) {
-									console.error("Error creating user resource:", error);
-									return {
-										message: "Failed to create user resource",
-										error: String(error),
-										userId: userId,
-									};
-								}
-							} catch (dbError) {
-								console.error("Database operation failed:", dbError);
-								return {
-									message: "Database operation failed",
-									error: String(dbError),
-									userId: userId,
-								};
-							}
-
+							// Use the shared handleUserSetup function
+							await handleUserSetup(userId);
 							return ctx;
 						} catch (unexpectedError) {
-							console.error("Unexpected error in handler:", unexpectedError);
+							console.error(
+								"Unexpected error in sign-up handler:",
+								unexpectedError
+							);
 							return {
 								message: "Unexpected error occurred",
 								error: String(unexpectedError),
 							};
+						}
+					},
+				},
+				{
+					matcher: (context) => {
+						return context.path.startsWith("/sign-in");
+					},
+					handler: async (ctx) => {
+						try {
+							const contextData = ctx as any;
+
+							if (!contextData?.context?.returned?.user) {
+								console.warn("No user data found in context");
+								return ctx;
+							}
+
+							const user = contextData.context.returned.user;
+							const userId = user.id;
+
+							if (!userId) {
+								console.warn("User ID is missing in sign-in");
+								return ctx;
+							}
+
+							// Use the shared handleUserSetup function
+							await handleUserSetup(userId);
+							return ctx;
+						} catch (unexpectedError) {
+							console.error(
+								"Unexpected error in sign-in handler:",
+								unexpectedError
+							);
+							return ctx; // Continue processing for sign-in
 						}
 					},
 				},
