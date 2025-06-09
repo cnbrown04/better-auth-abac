@@ -111,6 +111,17 @@ const result = await authClient.abac.canuserperformaction({
 });
 
 console.log(result);
+
+// EXAMPLE RETURN
+
+{
+    "decision": {
+        "decision": "not_applicable", // not_applicable, permit, deny
+        "reason": "No applicable policies found", // reason for permit / deny / not_applic
+        "appliedPolicies": [], // applied policies to the decision
+        "processingTimeMs": 292
+    }
+}
 ```
 
 #### Check Read Permissions
