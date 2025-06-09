@@ -1,0 +1,491 @@
+import {
+	mysqlTable,
+	mysqlSchema,
+	AnyMySqlColumn,
+	index,
+	foreignKey,
+	primaryKey,
+	varchar,
+	timestamp,
+	datetime,
+	json,
+	text,
+	longtext,
+	unique,
+	int,
+	tinyint,
+	boolean,
+} from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
+
+export const audit = mysqlTable(
+	"audit",
+	{
+		id: varchar({ length: 191 }).notNull(),
+		userId: varchar({ length: 191 })
+			.notNull()
+			.references(() => user.id),
+		retailer: varchar({ length: 191 }),
+		storeArea: varchar({ length: 191 }),
+		epc: varchar({ length: 191 }).notNull(),
+		upc: varchar({ length: 191 }).notNull(),
+		tid: varchar({ length: 191 }),
+		extractedUpc: varchar({ length: 191 }).notNull(),
+		present: varchar({ length: 191 }),
+		match: varchar({ length: 191 }),
+		status: varchar({ length: 191 }).notNull(),
+		createdAt: datetime({ mode: "string", fsp: 3 })
+			.default(sql`(CURRENT_TIMESTAMP(3))`)
+			.notNull(),
+		cycleCountId: varchar({ length: 191 })
+			.notNull()
+			.references(() => cyclecount.id, {
+				onDelete: "restrict",
+				onUpdate: "cascade",
+			}),
+		exceptions: json(),
+		flag: varchar({ length: 10 }),
+		notes: varchar({ length: 100 }),
+	},
+	(table) => {
+		return {
+			auditsUserIdFkeyIdx: index("Audits_userId_fkey_idx").on(table.userId),
+			auditId: primaryKey({ columns: [table.id], name: "audit_id" }),
+		};
+	}
+);
+
+export const auditfile = mysqlTable(
+	"auditfile",
+	{
+		id: varchar({ length: 191 }).notNull(),
+		auditId: varchar({ length: 191 })
+			.notNull()
+			.references(() => audit.id, {
+				onDelete: "restrict",
+				onUpdate: "cascade",
+			}),
+		fileName: varchar({ length: 191 }).notNull(),
+		blobUrl: text().notNull(),
+		userId: varchar({ length: 191 })
+			.notNull()
+			.references(() => user.id, { onDelete: "restrict", onUpdate: "cascade" }),
+		createdAt: datetime({ mode: "string", fsp: 3 })
+			.default(sql`(CURRENT_TIMESTAMP(3))`)
+			.notNull(),
+	},
+	(table) => {
+		return {
+			auditfileId: primaryKey({ columns: [table.id], name: "auditfile_id" }),
+		};
+	}
+);
+
+export const cyclecount = mysqlTable(
+	"cyclecount",
+	{
+		id: varchar({ length: 191 }).notNull(),
+		userId: varchar({ length: 191 })
+			.notNull()
+			.references(() => user.id),
+		createdAt: datetime({ mode: "string", fsp: 3 })
+			.default(sql`(CURRENT_TIMESTAMP(3))`)
+			.notNull(),
+		name: varchar({ length: 191 }),
+		cycleCount: json(),
+	},
+	(table) => {
+		return {
+			cycleCountsUserIdFkeyIdx: index("CycleCounts_userId_fkey_idx").on(
+				table.userId
+			),
+			cyclecountId: primaryKey({ columns: [table.id], name: "cyclecount_id" }),
+		};
+	}
+);
+
+export const data2D = mysqlTable(
+	"data2d",
+	{
+		id: varchar({ length: 255 }).notNull(),
+		userId: varchar({ length: 45 }).notNull(),
+		retailer: varchar({ length: 45 }),
+		storeArea: varchar({ length: 45 }),
+		data: longtext(),
+		createdAt: datetime({ mode: "string" }).default(sql`(CURRENT_TIMESTAMP)`),
+		upc: varchar({ length: 45 }),
+	},
+	(table) => {
+		return {
+			data2DId: primaryKey({ columns: [table.id], name: "data2d_id" }),
+		};
+	}
+);
+
+export const ticket = mysqlTable(
+	"ticket",
+	{
+		id: varchar({ length: 255 }).notNull(),
+		subject: varchar({ length: 255 }).notNull(),
+		type: varchar({ length: 45 }).notNull(),
+		status: varchar({ length: 45 }).notNull(),
+		priority: varchar({ length: 45 }).notNull(),
+		assignedUsers: varchar({ length: 45 }).notNull(),
+		createdBy: varchar({ length: 45 }).notNull(),
+		createdAt: datetime({ mode: "string" }).notNull(),
+	},
+	(table) => {
+		return {
+			ticketId: primaryKey({ columns: [table.id], name: "ticket_id" }),
+		};
+	}
+);
+
+export const ticketComment = mysqlTable(
+	"ticket_comment",
+	{
+		id: varchar({ length: 255 }).notNull(),
+		ticketId: varchar({ length: 255 }).notNull(),
+		comment: longtext().notNull(),
+		replyTo: varchar({ length: 45 }),
+	},
+	(table) => {
+		return {
+			ticketCommentId: primaryKey({
+				columns: [table.id],
+				name: "ticket_comment_id",
+			}),
+		};
+	}
+);
+
+export const userexclusion = mysqlTable(
+	"userexclusion",
+	{
+		id: int().autoincrement().notNull(),
+		userId: varchar({ length: 45 }).notNull(),
+		submissionId: varchar({ length: 45 }).notNull(),
+	},
+	(table) => {
+		return {
+			userexclusionId: primaryKey({
+				columns: [table.id],
+				name: "userexclusion_id",
+			}),
+		};
+	}
+);
+
+export const user = mysqlTable("user", {
+	id: varchar("id", { length: 255 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull(),
+	email: varchar("email", { length: 255 }).notNull().unique(),
+	emailVerified: boolean("email_verified")
+		.$defaultFn(() => false)
+		.notNull(),
+	image: varchar("image", { length: 255 }),
+	createdAt: timestamp("created_at")
+		.$defaultFn(() => /* @__PURE__ */ new Date())
+		.notNull(),
+	updatedAt: timestamp("updated_at")
+		.$defaultFn(() => /* @__PURE__ */ new Date())
+		.notNull(),
+	roleId: varchar("role_id", { length: 255 }).references(() => role.id, {
+		onDelete: "cascade",
+	}),
+});
+
+export const session = mysqlTable("session", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	expiresAt: timestamp("expires_at").notNull(),
+	token: varchar("token", { length: 255 }).notNull().unique(),
+	createdAt: timestamp("created_at").notNull(),
+	updatedAt: timestamp("updated_at").notNull(),
+	ipAddress: text("ip_address"),
+	userAgent: text("user_agent"),
+	userId: varchar("user_id", { length: 255 })
+		.notNull()
+		.references(() => user.id, { onDelete: "cascade" }),
+});
+
+export const account = mysqlTable("account", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	accountId: text("account_id").notNull(),
+	providerId: text("provider_id").notNull(),
+	userId: varchar("user_id", { length: 255 })
+		.notNull()
+		.references(() => user.id, { onDelete: "cascade" }),
+	accessToken: text("access_token"),
+	refreshToken: text("refresh_token"),
+	idToken: text("id_token"),
+	accessTokenExpiresAt: timestamp("access_token_expires_at"),
+	refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+	scope: text("scope"),
+	password: text("password"),
+	createdAt: timestamp("created_at").notNull(),
+	updatedAt: timestamp("updated_at").notNull(),
+});
+
+export const verification = mysqlTable("verification", {
+	id: varchar("id", { length: 255 }).primaryKey(),
+	identifier: varchar("identifier", { length: 255 }).notNull(),
+	value: varchar("value", { length: 255 }).notNull(),
+	expiresAt: timestamp("expires_at").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(
+		() => /* @__PURE__ */ new Date()
+	),
+	updatedAt: timestamp("updated_at").$defaultFn(
+		() => /* @__PURE__ */ new Date()
+	),
+});
+
+export const role = mysqlTable("role", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull().unique(),
+	description: text("description"),
+	color: text("color"),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const attribute = mysqlTable("attribute", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull().unique(),
+	type: text("type").notNull(),
+	category: text("category").notNull(),
+	description: text("description"),
+	validValues: text("valid_values"),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const roleAttribute = mysqlTable("role_attribute", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	roleId: varchar("role_id", { length: 255 })
+		.notNull()
+		.references(() => role.id, { onDelete: "cascade" }),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	value: text("value").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const userAttribute = mysqlTable("user_attribute", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	userId: varchar("user_id", { length: 255 })
+		.notNull()
+		.references(() => user.id, { onDelete: "cascade" }),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	value: text("value").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const resourceType = mysqlTable("resource_type", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull().unique(),
+	description: text("description"),
+	tableName: text("table_name").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const resource = mysqlTable("resource", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	resourceTypeId: varchar("resource_type_id", { length: 255 })
+		.notNull()
+		.references(() => resourceType.id, { onDelete: "cascade" }),
+	resourceId: varchar("resource_id", { length: 255 }).notNull(),
+	name: text("name").notNull(),
+	ownerId: varchar("owner_id", { length: 255 })
+		.notNull()
+		.references(() => user.id, { onDelete: "cascade" }),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const resourceAttribute = mysqlTable("resource_attribute", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	resourceId: varchar("resource_id", { length: 255 })
+		.notNull()
+		.references(() => resource.id, { onDelete: "cascade" }),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	value: text("value").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const actions = mysqlTable("actions", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull().unique(),
+	description: text("description"),
+	resourceTypeId: varchar("resource_type_id", { length: 255 })
+		.notNull()
+		.references(() => resourceType.id, { onDelete: "cascade" }),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const actionAttribute = mysqlTable("action_attribute", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	actionId: varchar("action_id", { length: 255 })
+		.notNull()
+		.references(() => actions.id, { onDelete: "cascade" }),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	value: text("value").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const environmentAttribute = mysqlTable("environment_attribute", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull().unique(),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	value: text("value").notNull(),
+	validFrom: timestamp("valid_from"),
+	validTo: timestamp("valid_to"),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const policySet = mysqlTable("policy_set", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull().unique(),
+	description: text("description"),
+	isActive: boolean("is_active").default(true),
+	priority: int("priority").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const policy = mysqlTable("policy", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: text("name").notNull(),
+	description: text("description"),
+	policySetId: varchar("policy_set_id", { length: 255 })
+		.notNull()
+		.references(() => policySet.id, { onDelete: "cascade" }),
+	effect: text("effect").notNull(),
+	priority: int("priority").notNull(),
+	isActive: boolean("is_active").default(true),
+	rules: text("rules").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const policyRule = mysqlTable("policy_rule", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	policyId: varchar("policy_id", { length: 255 })
+		.notNull()
+		.references(() => policy.id, { onDelete: "cascade" }),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	operator: text("operator").notNull(),
+	value: text("value").notNull(),
+	logicalOperator: text("logical_operator"),
+	groupId: text("group_id"),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const policyTarget = mysqlTable("policy_target", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	policyId: varchar("policy_id", { length: 255 })
+		.notNull()
+		.references(() => policy.id, { onDelete: "cascade" }),
+	targetType: text("target_type").notNull(),
+	targetId: text("target_id").notNull(),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	operator: text("operator").notNull(),
+	value: text("value").notNull(),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const accessRequest = mysqlTable("access_request", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	userId: varchar("user_id", { length: 255 })
+		.notNull()
+		.references(() => user.id, { onDelete: "cascade" }),
+	resourceId: varchar("resource_id", { length: 255 })
+		.notNull()
+		.references(() => resource.id, { onDelete: "cascade" }),
+	actionId: varchar("action_id", { length: 255 })
+		.notNull()
+		.references(() => actions.id, { onDelete: "cascade" }),
+	decision: text("decision"),
+	appliedPolicies: text("applied_policies"),
+	requestContext: text("request_context"),
+	processingTimeMs: int("processing_time_ms"),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+});
+
+export const dynamicAttribute = mysqlTable("dynamic_attribute", {
+	id: varchar("id", { length: 36 }).primaryKey(),
+	name: varchar("name", { length: 255 }).notNull().unique(),
+	attributeId: varchar("attribute_id", { length: 255 })
+		.notNull()
+		.references(() => attribute.id, { onDelete: "cascade" }),
+	computationRule: text("computation_rule").notNull(),
+	cacheTimeoutMinutes: int("cache_timeout_minutes").default(60),
+	isActive: boolean("is_active").default(true),
+	createdAt: timestamp("created_at").$defaultFn(() => {
+		return new Date();
+	}),
+	updatedAt: timestamp("updated_at").$defaultFn(() => {
+		return new Date();
+	}),
+});

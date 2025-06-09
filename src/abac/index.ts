@@ -10,6 +10,8 @@ import {
 } from "./funcs";
 import { Kysely } from "kysely";
 import { Database } from "./database-types";
+import { abacClient } from "./client";
+import { createAbacAdapter } from "./adapter";
 
 const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 	return {
@@ -20,9 +22,7 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 				fields: {
 					roleId: {
 						type: "string",
-						required: true,
 						references: { model: "role", field: "id" },
-						defaultValue: "USER",
 					},
 				},
 			},
@@ -424,12 +424,53 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 							updated_at: new Date(),
 						})
 						.execute();
-				} else {
-					console.log("User role already exists:", userRole);
 				}
 			}
 
-			console.log("ABAC Plugin Request Path:", path);
+			if (path.startsWith("/api/auth/sign-in")) {
+				const userRole = await db
+					.selectFrom("role")
+					.where("id", "=", "USER")
+					.selectAll()
+					.executeTakeFirst();
+
+				if (!userRole) {
+					// If the USER role does not exist, create it
+					await db
+						.insertInto("role")
+						.values({
+							id: "USER",
+							name: "User",
+							description: "Default user role",
+							color: "#0000FF", // Default color for users
+							created_at: new Date(),
+							updated_at: new Date(),
+						})
+						.execute();
+				}
+
+				// Ensure the user has the USER role
+				const userId = ctx.session?.user?.id;
+				if (userId) {
+					const userRoleExists = await db
+						.selectFrom("user")
+						.where("id", "=", userId)
+						.where("role_id", "=", "USER")
+						.selectAll()
+						.executeTakeFirst();
+
+					if (!userRoleExists) {
+						await db
+							.updateTable("user")
+							.set({
+								role_id: "USER",
+								updated_at: new Date(),
+							})
+							.where("id", "=", userId)
+							.execute();
+					}
+				}
+			}
 		},
 		hooks: {
 			after: [
@@ -480,8 +521,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 												created_at: new Date(),
 											})
 											.execute();
-
-										console.log("Resource type 'user' created successfully");
 									} catch (error) {
 										// Handle duplicate resource type creation (race condition)
 
@@ -506,9 +545,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 									.executeTakeFirst();
 
 								if (existingResource) {
-									console.log(
-										`User resource already exists for user ${userId}`
-									);
 									return ctx; // Continue processing
 								}
 
@@ -525,10 +561,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 											created_at: new Date(),
 										})
 										.execute();
-
-									console.log(
-										`User resource created successfully for user ${userId}`
-									);
 								} catch (error) {
 									// Handle duplicate resource creation
 									console.error("Error creating user resource:", error);
@@ -697,4 +729,4 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 	} satisfies BetterAuthPlugin;
 };
 
-export default abac;
+export { abac, abacClient, createAbacAdapter };

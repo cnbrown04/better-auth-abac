@@ -69,6 +69,8 @@ export const auth = betterAuth({
 
 ## Database Schema
 
+> ⚠️ **IMPORTANT**: Please remember to run `npx @better-auth/cli generate` and push changes to your database before using this plugin.
+
 The plugin automatically creates the following tables in your database:
 
 - **role**: User roles with attributes

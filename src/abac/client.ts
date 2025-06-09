@@ -1,5 +1,5 @@
 import { BetterAuthClientPlugin } from "better-auth";
-import abac from ".";
+import { abac } from ".";
 
 const abacClient = () => {
 	return {
@@ -8,4 +8,4 @@ const abacClient = () => {
 	} satisfies BetterAuthClientPlugin;
 };
 
-export default abacClient;
+export { abacClient };

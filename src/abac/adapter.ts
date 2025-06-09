@@ -163,7 +163,7 @@ async function createDialect(
 	}
 }
 
-export default async function createAbacAdapter(
+async function createAbacAdapter(
 	config: AbacAdapterConfig
 ): Promise<Kysely<Database>> {
 	/*******************************************************************
@@ -206,3 +206,5 @@ export default async function createAbacAdapter(
 //     filename: './my-database.sqlite', // optional, overrides uri for file path
 //   }
 // });
+
+export { createAbacAdapter };
