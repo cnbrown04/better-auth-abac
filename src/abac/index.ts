@@ -399,66 +399,44 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 				},
 			},
 		},
+
 		onRequest: async (req, ctx) => {
 			const url = new URL(req.url);
 			const path = url.pathname;
 
-			if (path.startsWith("/api/auth/sign-up")) {
-				// Make sure the role object USER exists, and then insert the user
-				const userRole = await db
-					.selectFrom("role")
-					.where("id", "=", "USER")
-					.selectAll()
-					.executeTakeFirst();
+			const handleUserSetup = async (userId: string) => {
+				if (!userId) return;
 
-				if (!userRole) {
-					// If the USER role does not exist, create it
-					await db
-						.insertInto("role")
-						.values({
-							id: "USER",
-							name: "User",
-							description: "Default user role",
-							color: "#0000FF", // Default color for users
-							created_at: new Date(),
-							updated_at: new Date(),
-						})
-						.execute();
-				}
-			}
+				try {
+					// 1. Ensure USER role exists
+					const userRole = await db
+						.selectFrom("role")
+						.where("id", "=", "USER")
+						.selectAll()
+						.executeTakeFirst();
 
-			if (path.startsWith("/api/auth/sign-in")) {
-				const userRole = await db
-					.selectFrom("role")
-					.where("id", "=", "USER")
-					.selectAll()
-					.executeTakeFirst();
+					if (!userRole) {
+						await db
+							.insertInto("role")
+							.values({
+								id: "USER",
+								name: "User",
+								description: "Default user role",
+								color: "#0000FF",
+								created_at: new Date(),
+								updated_at: new Date(),
+							})
+							.execute();
+					}
 
-				if (!userRole) {
-					// If the USER role does not exist, create it
-					await db
-						.insertInto("role")
-						.values({
-							id: "USER",
-							name: "User",
-							description: "Default user role",
-							color: "#0000FF", // Default color for users
-							created_at: new Date(),
-							updated_at: new Date(),
-						})
-						.execute();
-				}
-
-				// Ensure the user has the USER role
-				const userId = ctx.session?.user?.id;
-				if (userId) {
-					const userRoleExists = await db
+					// 2. Ensure user has USER role assigned
+					const user = await db
 						.selectFrom("user")
 						.where("id", "=", userId)
 						.selectAll()
 						.executeTakeFirst();
 
-					if (userRoleExists?.role_id == null || userRoleExists.role_id == "") {
+					if (user && (user.role_id == null || user.role_id == "")) {
 						await db
 							.updateTable("user")
 							.set({
@@ -468,7 +446,86 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 							.where("id", "=", userId)
 							.executeTakeFirst();
 					}
+
+					// 3. Ensure resource type exists
+					const resourceType = await db
+						.selectFrom("resource_type")
+						.where("name", "=", "user")
+						.selectAll()
+						.executeTakeFirst();
+
+					if (!resourceType) {
+						try {
+							await db
+								.insertInto("resource_type")
+								.values({
+									id: "user.resource_type",
+									name: "user",
+									description: "User resource type",
+									table_name: "resource",
+									created_at: new Date(),
+								})
+								.execute();
+						} catch (error) {
+							console.error("Error creating resource type:", error);
+						}
+					}
+
+					// 4. Ensure user resource exists
+					const existingResource = await db
+						.selectFrom("resource")
+						.where("id", "=", userId)
+						.selectAll()
+						.executeTakeFirst();
+
+					if (!existingResource) {
+						try {
+							await db
+								.insertInto("resource")
+								.values({
+									id: userId,
+									resource_type_id: resourceType?.id || "user.resource_type",
+									resource_id: userId,
+									name: user?.name || user?.email || "Unnamed User",
+									owner_id: userId,
+									created_at: new Date(),
+								})
+								.execute();
+						} catch (error) {
+							console.error("Error creating user resource:", error);
+						}
+					}
+				} catch (error) {
+					console.error("Error in handleUserSetup:", error);
 				}
+			};
+
+			if (path.startsWith("/api/auth/sign-up")) {
+				// For sign-up, we'll handle this in the after hook
+				const userRole = await db
+					.selectFrom("role")
+					.where("id", "=", "USER")
+					.selectAll()
+					.executeTakeFirst();
+
+				if (!userRole) {
+					await db
+						.insertInto("role")
+						.values({
+							id: "USER",
+							name: "User",
+							description: "Default user role",
+							color: "#0000FF",
+							created_at: new Date(),
+							updated_at: new Date(),
+						})
+						.execute();
+				}
+			}
+
+			if (path.startsWith("/api/auth/sign-in")) {
+				const userId = ctx.session?.user?.id;
+				await handleUserSetup(userId ?? "");
 			}
 		},
 		hooks: {
@@ -481,16 +538,14 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 						try {
 							const contextData = ctx as any;
 
-							// Check if user data exists in context
 							if (!contextData?.context?.returned?.user) {
 								console.warn("No user data found in context");
-								return ctx; // Continue processing even without user data
+								return ctx;
 							}
 
 							const user = contextData.context.returned.user;
 							const userId = user.id;
 
-							// Validate user ID
 							if (!userId) {
 								console.error("User ID is missing");
 								return {
@@ -500,6 +555,27 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 							}
 
 							try {
+								// Ensure user has USER role assigned
+								const existingUser = await db
+									.selectFrom("user")
+									.where("id", "=", userId)
+									.selectAll()
+									.executeTakeFirst();
+
+								if (
+									existingUser &&
+									(existingUser.role_id == null || existingUser.role_id == "")
+								) {
+									await db
+										.updateTable("user")
+										.set({
+											role_id: "USER",
+											updated_at: new Date(),
+										})
+										.where("id", "=", userId)
+										.executeTakeFirst();
+								}
+
 								// Check if resource type exists
 								const resourceType = await db
 									.selectFrom("resource_type")
@@ -508,7 +584,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 									.executeTakeFirst();
 
 								if (!resourceType) {
-									// Create resource type if it doesn't exist
 									try {
 										await db
 											.insertInto("resource_type")
@@ -521,8 +596,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 											})
 											.execute();
 									} catch (error) {
-										// Handle duplicate resource type creation (race condition)
-
 										console.error("Error creating resource type:", error);
 										return {
 											message: "Failed to create resource type",
@@ -531,7 +604,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 									}
 								}
 
-								// Get the resource type ID (either existing or newly created)
 								const finalResourceType = resourceType || {
 									id: "user.resource_type",
 								};
@@ -544,7 +616,7 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 									.executeTakeFirst();
 
 								if (existingResource) {
-									return ctx; // Continue processing
+									return ctx;
 								}
 
 								// Create user resource
@@ -561,7 +633,6 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 										})
 										.execute();
 								} catch (error) {
-									// Handle duplicate resource creation
 									console.error("Error creating user resource:", error);
 									return {
 										message: "Failed to create user resource",
@@ -578,7 +649,7 @@ const abac = (db: Kysely<Database>): BetterAuthPlugin => {
 								};
 							}
 
-							return ctx; // Return context to continue processing
+							return ctx;
 						} catch (unexpectedError) {
 							console.error("Unexpected error in handler:", unexpectedError);
 							return {
