@@ -17,7 +17,7 @@ export interface AuthorizationResult {
 	processingTimeMs: number;
 }
 
-interface AttributeValue {
+export interface AttributeValue {
 	id: string;
 	name: string;
 	type: string;
@@ -25,7 +25,7 @@ interface AttributeValue {
 	value: string;
 }
 
-interface PolicyEvaluation {
+export interface PolicyEvaluation {
 	policyId: string;
 	policyName: string;
 	effect: "permit" | "deny";
@@ -33,7 +33,7 @@ interface PolicyEvaluation {
 	reason?: string;
 }
 
-interface PolicyWithRules {
+export interface PolicyWithRules {
 	policy: {
 		id: string;
 		name: string;
