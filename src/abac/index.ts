@@ -606,7 +606,7 @@ const abac = (db: Kysely<Database>) => {
 				{
 					method: "POST",
 					body: z.object({
-						subjectId: z.string(),
+						subjectId: z.string().optional(),
 						resourceId: z.string().optional(),
 						resourceType: z.string().optional(),
 						actionName: z.string(),
@@ -615,7 +615,22 @@ const abac = (db: Kysely<Database>) => {
 				},
 				async (ctx) => {
 					// Gather attributes for the subject
-					const decision = await canUserPerformAction(db, ctx.body);
+					const subjectId = ctx.body.subjectId ?? ctx.context.session?.user?.id;
+
+					if (!subjectId) {
+						throw ctx.error("BAD_REQUEST", {
+							message: "No Subject ID provided or found in session.",
+							status: 400,
+						});
+					}
+
+					const decision = await canUserPerformAction(db, {
+						subjectId: subjectId,
+						resourceId: ctx.body.resourceId,
+						resourceType: ctx.body.resourceType,
+						actionName: ctx.body.actionName,
+						context: ctx.body.context,
+					});
 
 					return {
 						decision,
@@ -627,15 +642,24 @@ const abac = (db: Kysely<Database>) => {
 				{
 					method: "POST",
 					body: z.object({
-						userId: z.string(),
+						userId: z.string().optional(),
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
 					}),
 				},
 				async (ctx) => {
+					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
+
+					if (!userId) {
+						throw ctx.error("BAD_REQUEST", {
+							message: "No User ID provided or found in session.",
+							status: 400,
+						});
+					}
+
 					const decision = await canUserRead(
 						db,
-						ctx.body.userId,
+						userId,
 						ctx.body.resourceId,
 						ctx.body.context
 					);
@@ -649,16 +673,24 @@ const abac = (db: Kysely<Database>) => {
 				{
 					method: "POST",
 					body: z.object({
-						userId: z.string(),
+						userId: z.string().optional(),
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
 					}),
 				},
 				async (ctx) => {
+					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
+
+					if (!userId) {
+						throw ctx.error("BAD_REQUEST", {
+							message: "No Subject ID provided or found in session.",
+							status: 400,
+						});
+					}
+
 					const decision = await canUserWrite(
 						db,
-
-						ctx.body.userId,
+						userId,
 						ctx.body.resourceId,
 						ctx.body.context
 					);
@@ -678,9 +710,18 @@ const abac = (db: Kysely<Database>) => {
 					}),
 				},
 				async (ctx) => {
+					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
+
+					if (!userId) {
+						throw ctx.error("BAD_REQUEST", {
+							message: "No Subject ID provided or found in session.",
+							status: 400,
+						});
+					}
+
 					const decision = await canUserDelete(
 						db,
-						ctx.body.userId,
+						userId,
 						ctx.body.resourceId,
 						ctx.body.context
 					);
@@ -694,7 +735,7 @@ const abac = (db: Kysely<Database>) => {
 				{
 					method: "POST",
 					body: z.object({
-						userId: z.string(),
+						userId: z.string().optional(),
 						actionName: z.string(),
 						resourceIds: z.array(z.string()),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
@@ -703,9 +744,18 @@ const abac = (db: Kysely<Database>) => {
 				async (ctx) => {
 					const { userId, actionName, resourceIds, context } = ctx.body;
 
+					const subjectId = userId ?? ctx.context.session?.user?.id;
+
+					if (!subjectId) {
+						throw ctx.error("BAD_REQUEST", {
+							message: "No Subject ID provided or found in session.",
+							status: 400,
+						});
+					}
+
 					const decisions = await canUserPerformActionOnResources(
 						db,
-						userId,
+						subjectId,
 						actionName,
 						resourceIds,
 						context
