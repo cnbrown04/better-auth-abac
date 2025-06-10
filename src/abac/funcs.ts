@@ -2,7 +2,7 @@ import type { Database } from "./database-types"; // Your Kysely schema types
 import { Kysely, sql } from "kysely";
 
 // Types for the authorization system
-interface AuthorizationRequest {
+export interface AuthorizationRequest {
 	subjectId: string;
 	resourceId?: string;
 	resourceType?: string;
@@ -10,14 +10,14 @@ interface AuthorizationRequest {
 	context?: Record<string, any>;
 }
 
-interface AuthorizationResult {
+export interface AuthorizationResult {
 	decision: "permit" | "deny" | "not_applicable" | "indeterminate";
 	reason?: string;
 	appliedPolicies: string[];
 	processingTimeMs: number;
 }
 
-interface AttributeValue {
+export interface AttributeValue {
 	id: string;
 	name: string;
 	type: string;
@@ -25,7 +25,7 @@ interface AttributeValue {
 	value: string;
 }
 
-interface PolicyEvaluation {
+export interface PolicyEvaluation {
 	policyId: string;
 	policyName: string;
 	effect: "permit" | "deny";
@@ -33,7 +33,7 @@ interface PolicyEvaluation {
 	reason?: string;
 }
 
-interface PolicyWithRules {
+export interface PolicyWithRules {
 	policy: {
 		id: string;
 		name: string;

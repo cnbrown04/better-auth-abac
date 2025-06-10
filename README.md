@@ -69,6 +69,8 @@ export const auth = betterAuth({
 
 ## Database Schema
 
+> ⚠️ **IMPORTANT**: Please remember to run `npx @better-auth/cli generate` and push changes to your database before using this plugin.
+
 The plugin automatically creates the following tables in your database:
 
 - **role**: User roles with attributes
@@ -109,6 +111,17 @@ const result = await authClient.abac.canuserperformaction({
 });
 
 console.log(result);
+
+// EXAMPLE RETURN
+
+{
+    "decision": {
+        "decision": "not_applicable", // not_applicable, permit, deny
+        "reason": "No applicable policies found", // reason for permit / deny / not_applic
+        "appliedPolicies": [], // applied policies to the decision
+        "processingTimeMs": 292
+    }
+}
 ```
 
 #### Check Read Permissions
