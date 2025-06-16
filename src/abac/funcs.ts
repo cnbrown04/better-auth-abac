@@ -300,6 +300,29 @@ async function gatherAttributes(
 		console.log(`   ✓ ${key} = "${attr.value}"`);
 	});
 
+	console.log("🔄 Adding dynamic action attribute...");
+	attributeMap.set("action.action_name", {
+		id: "dynamic-action-name",
+		name: "action_name",
+		type: "string",
+		category: "action",
+		value: request.actionName,
+	});
+	console.log(`   ✓ action.action_name = "${request.actionName}"`);
+
+	// Also add resource type if provided
+	if (request.resourceType) {
+		console.log("🔄 Adding dynamic resource type attribute...");
+		attributeMap.set("resource.resource_type", {
+			id: "dynamic-resource-type",
+			name: "resource_type",
+			type: "string",
+			category: "resource",
+			value: request.resourceType,
+		});
+		console.log(`   ✓ resource.resource_type = "${request.resourceType}"`);
+	}
+
 	// Get environment attributes
 	console.log("🌍 Gathering environment attributes...");
 	const envAttrs = await db
