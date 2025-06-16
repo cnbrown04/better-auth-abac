@@ -144,6 +144,7 @@ const abac = (db: Kysely<Database>) => {
 							return new Date();
 						},
 					},
+					defaultRole: { type: "boolean", defaultValue: false },
 				},
 			},
 			attribute: {
