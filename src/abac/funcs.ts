@@ -498,6 +498,14 @@ async function findApplicablePolicies(
 			);
 		});
 
+		// Skip policies that have no rules AND no targets
+		if (rules.length === 0 && targets.length === 0) {
+			console.log(
+				`   ⏭️ Skipping policy "${policy.name}" - no rules or targets defined`
+			);
+			continue;
+		}
+
 		policiesWithRulesAndTargets.push({
 			policy,
 			rules,
