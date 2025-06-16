@@ -102,13 +102,15 @@ export async function canUserPerformAction(
 
 		// Step 5: Log the access request
 		const processingTime = Date.now() - startTime;
-		await logAccessRequest(
-			db,
-			request,
-			decision,
-			policyEvaluations,
-			processingTime
-		);
+		if (request.resourceId) {
+			await logAccessRequest(
+				db,
+				request,
+				decision,
+				policyEvaluations,
+				processingTime
+			);
+		}
 
 		return {
 			decision: decision.decision,
@@ -647,6 +649,12 @@ async function logAccessRequest(
 				.where("resource_id", "=", request.resourceId)
 				.executeTakeFirst();
 			resourceId = resource?.id || request.resourceId;
+		}
+
+		if (!resourceId || resourceId === "") {
+			// If no resource ID is found, we can't log the access request
+			console.warn("No resource ID found for logging access request");
+			return;
 		}
 
 		await db
