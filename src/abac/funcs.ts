@@ -792,7 +792,7 @@ function makeFinalDecision(
 	evaluations: PolicyEvaluation[],
 	policies: PolicyWithRules[]
 ): {
-	decision: "permit" | "deny" | "not_applicable";
+	decision: "permit" | "deny";
 	reason: string;
 } {
 	console.log(
@@ -802,7 +802,7 @@ function makeFinalDecision(
 	if (evaluations.length === 0) {
 		console.log("🏁 No applicable policies found");
 		return {
-			decision: "not_applicable",
+			decision: "deny",
 			reason: "No applicable policies found",
 		};
 	}
