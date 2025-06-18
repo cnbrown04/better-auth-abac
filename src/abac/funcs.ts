@@ -842,7 +842,7 @@ function findAttributeByName(
 	attributeName: string,
 	attributes: Map<string, AttributeValue>
 ): AttributeValue | undefined {
-	for (const [key, value] of attributes) {
+	for (const [_, value] of attributes) {
 		if (value.name === attributeName) {
 			return value;
 		}

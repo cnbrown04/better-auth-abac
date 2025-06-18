@@ -1,5 +1,5 @@
-import { Kysely, Dialect, MysqlPool } from "kysely";
-import { Database } from "./database-types";
+import { Kysely, type Dialect } from "kysely";
+import { type Database } from "./database-types";
 
 // Type definitions for dynamic imports
 interface PostgresPoolConfig {
@@ -11,8 +11,6 @@ interface PostgresPoolConfig {
 interface PostgresPool {
 	new (config: PostgresPoolConfig): any;
 }
-
-type DatabaseType = "mysql" | "postgres" | "sqlite";
 
 interface BaseDbConfig {
 	uri: string;

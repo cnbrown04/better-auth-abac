@@ -1,13 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "outDir": "./dist",
-    "module": "CommonJS",
-    "rootDir": "./src/abac",
+		"module": "preserve",
+		"moduleResolution": "bundler",
+
+		// custom
     "declaration": true,
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    "rootDir": "./src/abac"
   },
   "include": ["src/abac/**/*"],
   "exclude": ["node_modules", "dist"]
