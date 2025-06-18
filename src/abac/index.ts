@@ -18,7 +18,7 @@ import { Database } from "./database-types";
 import { abacClient } from "./client";
 import { createAbacAdapter } from "./adapter";
 
-const abac = (db: Kysely<Database>) => {
+const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 	const handleUserSetup = async (userId: string) => {
 		if (!userId) return;
 
@@ -629,13 +629,17 @@ const abac = (db: Kysely<Database>) => {
 						});
 					}
 
-					const decision = await canUserPerformAction(db, {
-						subjectId: subjectId,
-						resourceId: ctx.body.resourceId,
-						resourceType: ctx.body.resourceType,
-						actionName: ctx.body.actionName,
-						context: ctx.body.context,
-					});
+					const decision = await canUserPerformAction(
+						db,
+						{
+							subjectId: subjectId,
+							resourceId: ctx.body.resourceId,
+							resourceType: ctx.body.resourceType,
+							actionName: ctx.body.actionName,
+							context: ctx.body.context,
+						},
+						{ debug: debugLogs }
+					);
 
 					return {
 						decision,
@@ -666,7 +670,8 @@ const abac = (db: Kysely<Database>) => {
 						db,
 						userId,
 						ctx.body.resourceId,
-						ctx.body.context
+						ctx.body.context,
+						{ debug: debugLogs }
 					);
 					return {
 						decision,
@@ -697,7 +702,8 @@ const abac = (db: Kysely<Database>) => {
 						db,
 						userId,
 						ctx.body.resourceId,
-						ctx.body.context
+						ctx.body.context,
+						{ debug: debugLogs }
 					);
 					return {
 						decision,
@@ -763,7 +769,8 @@ const abac = (db: Kysely<Database>) => {
 						subjectId,
 						actionName,
 						resourceIds,
-						context
+						context,
+						{ debug: debugLogs }
 					);
 
 					return {
