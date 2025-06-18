@@ -124,6 +124,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 					roleId: {
 						type: "string",
 						references: { model: "role", field: "id" },
+						defaultValue: `"USER"`,
 					},
 				},
 			},
