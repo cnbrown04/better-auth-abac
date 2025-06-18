@@ -7,14 +7,14 @@ import {
 	canUserPerformActionOnResources,
 	canUserRead,
 	canUserWrite,
-	AuthorizationRequest,
-	AuthorizationResult,
-	AttributeValue,
-	PolicyEvaluation,
-	PolicyWithRules,
+	type AuthorizationRequest,
+	type AuthorizationResult,
+	type AttributeValue,
+	type PolicyEvaluation,
+	type PolicyWithRules,
 } from "./funcs";
 import { Kysely } from "kysely";
-import { Database } from "./database-types";
+import { type Database } from "./database-types";
 import { abacClient } from "./client";
 import { createAbacAdapter } from "./adapter";
 
@@ -503,7 +503,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 			},
 		},
 
-		onRequest: async (req, ctx) => {
+		onRequest: async (req) => {
 			const url = new URL(req.url);
 			const path = url.pathname;
 
@@ -784,7 +784,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 				{
 					method: "GET",
 				},
-				async (ctx) => {
+				async () => {
 					try {
 						return {
 							message: "ABAC plugin is working!",

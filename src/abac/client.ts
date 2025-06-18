@@ -1,4 +1,4 @@
-import { BetterAuthClientPlugin } from "better-auth";
+import { type BetterAuthClientPlugin } from "better-auth";
 import { abac } from "./index";
 
 const abacClient = () => {
