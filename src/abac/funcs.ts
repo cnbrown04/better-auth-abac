@@ -17,6 +17,10 @@ export interface AuthorizationResult {
 	processingTimeMs: number;
 }
 
+export interface AuthorizationConfig {
+	debug?: boolean;
+}
+
 export interface AttributeValue {
 	id: string;
 	name: string;
@@ -50,6 +54,17 @@ export interface PolicyWithRules {
 	targets: any[];
 }
 
+// Debug logging utility
+function debugLog(
+	config: AuthorizationConfig | undefined,
+	message: string,
+	...args: any[]
+) {
+	if (config?.debug) {
+		console.log(message, ...args);
+	}
+}
+
 // Operators for rule evaluation
 const OPERATORS = {
 	equals: (a: any, b: any) => a === b,
@@ -76,39 +91,59 @@ const OPERATORS = {
  */
 export async function canUserPerformAction(
 	db: Kysely<Database>,
-	request: AuthorizationRequest
+	request: AuthorizationRequest,
+	config?: AuthorizationConfig
 ): Promise<AuthorizationResult> {
 	const startTime = Date.now();
 
+	debugLog(config, "🚀 === AUTHORIZATION DEBUG START ===");
+	debugLog(config, "📋 Request:", JSON.stringify(request, null, 2));
+
 	try {
 		// Step 1: Gather all attributes for the request
-		const attributes = await gatherAttributes(db, request);
+		debugLog(config, "\n📊 Step 1: Gathering attributes...");
+		const attributes = await gatherAttributes(db, request, config);
 
 		// Step 2: Find applicable policies
+		debugLog(config, "\n🎯 Step 2: Finding applicable policies...");
 		const applicablePolicies = await findApplicablePolicies(
 			db,
 			request,
-			attributes
+			attributes,
+			config
 		);
 
 		// Step 3: Evaluate policies
+		debugLog(config, "\n⚖️ Step 3: Evaluating policies...");
 		const policyEvaluations = await evaluatePolicies(
 			applicablePolicies,
-			attributes
+			attributes,
+			config
 		);
 
 		// Step 4: Make final decision (now passes policies for priority lookup)
-		const decision = makeFinalDecision(policyEvaluations, applicablePolicies);
+		debugLog(config, "\n🏁 Step 4: Making final decision...");
+		const decision = makeFinalDecision(
+			policyEvaluations,
+			applicablePolicies,
+			config
+		);
 
 		// Step 5: Log the access request
 		const processingTime = Date.now() - startTime;
-		await logAccessRequest(
-			db,
-			request,
-			decision,
-			policyEvaluations,
-			processingTime
-		);
+		if (request.resourceId) {
+			await logAccessRequest(
+				db,
+				request,
+				decision,
+				policyEvaluations,
+				processingTime
+			);
+		}
+
+		debugLog(config, "\n✅ === AUTHORIZATION DEBUG END ===");
+		debugLog(config, "🎭 Final Decision:", decision);
+		debugLog(config, "⏱️ Processing Time:", processingTime + "ms");
 
 		return {
 			decision: decision.decision,
@@ -118,7 +153,7 @@ export async function canUserPerformAction(
 		};
 	} catch (error) {
 		const processingTime = Date.now() - startTime;
-		console.error("Authorization error:", error);
+		console.error("❌ Authorization error:", error);
 
 		return {
 			decision: "indeterminate",
@@ -136,9 +171,16 @@ export async function canUserPerformAction(
  */
 async function gatherAttributes(
 	db: Kysely<Database>,
-	request: AuthorizationRequest
+	request: AuthorizationRequest,
+	config?: AuthorizationConfig
 ): Promise<Map<string, AttributeValue>> {
 	const attributeMap = new Map<string, AttributeValue>();
+
+	debugLog(
+		config,
+		"🔍 Gathering subject attributes for user:",
+		request.subjectId
+	);
 
 	// Get subject attributes (user attributes)
 	const subjectAttrs = await db
@@ -154,17 +196,21 @@ async function gatherAttributes(
 		.where("user_attribute.user_id", "=", request.subjectId)
 		.execute();
 
+	debugLog(config, "👤 Found subject attributes:", subjectAttrs.length);
 	subjectAttrs.forEach((attr) => {
-		attributeMap.set(`subject.${attr.name}`, {
+		const key = `subject.${attr.name}`;
+		attributeMap.set(key, {
 			id: attr.id,
 			name: attr.name,
 			type: attr.type,
 			category: attr.category,
 			value: attr.value,
 		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
 	});
 
 	// Get role attributes for the user
+	debugLog(config, "🎭 Gathering role attributes...");
 	const roleAttrs = await db
 		.selectFrom("user")
 		.innerJoin("role_attribute", "user.role_id", "role_attribute.role_id")
@@ -179,18 +225,26 @@ async function gatherAttributes(
 		.where("user.id", "=", request.subjectId)
 		.execute();
 
+	debugLog(config, "🎭 Found role attributes:", roleAttrs.length);
 	roleAttrs.forEach((attr) => {
-		attributeMap.set(`subject.${attr.name}`, {
+		const key = `subject.${attr.name}`;
+		attributeMap.set(key, {
 			id: attr.id,
 			name: attr.name,
 			type: attr.type,
 			category: attr.category,
 			value: attr.value,
 		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
 	});
 
 	// Get resource attributes if resource is specified
 	if (request.resourceId) {
+		debugLog(
+			config,
+			"📁 Gathering resource attributes for:",
+			request.resourceId
+		);
 		const resourceAttrs = await db
 			.selectFrom("resource_attribute")
 			.innerJoin("attribute", "resource_attribute.attribute_id", "attribute.id")
@@ -205,14 +259,17 @@ async function gatherAttributes(
 			.where("resource.resource_id", "=", request.resourceId)
 			.execute();
 
+		debugLog(config, "📁 Found resource attributes:", resourceAttrs.length);
 		resourceAttrs.forEach((attr) => {
-			attributeMap.set(`resource.${attr.name}`, {
+			const key = `resource.${attr.name}`;
+			attributeMap.set(key, {
 				id: attr.id,
 				name: attr.name,
 				type: attr.type,
 				category: attr.category,
 				value: attr.value,
 			});
+			debugLog(config, `   ✓ ${key} = "${attr.value}"`);
 		});
 
 		// Add resource ownership check
@@ -230,19 +287,23 @@ async function gatherAttributes(
 				category: "resource",
 				value: resourceOwner.owner_id,
 			});
+			debugLog(config, `   ✓ resource.owner_id = "${resourceOwner.owner_id}"`);
 
 			// Add is_owner dynamic attribute
+			const isOwner = (resourceOwner.owner_id === request.subjectId).toString();
 			attributeMap.set("resource.is_owner", {
 				id: "resource-is-owner",
 				name: "is_owner",
 				type: "boolean",
 				category: "resource",
-				value: (resourceOwner.owner_id === request.subjectId).toString(),
+				value: isOwner,
 			});
+			debugLog(config, `   ✓ resource.is_owner = "${isOwner}"`);
 		}
 	}
 
 	// Get action attributes
+	debugLog(config, "⚡ Gathering action attributes for:", request.actionName);
 	const actionAttrs = await db
 		.selectFrom("action_attribute")
 		.innerJoin("attribute", "action_attribute.attribute_id", "attribute.id")
@@ -257,17 +318,44 @@ async function gatherAttributes(
 		.where("actions.name", "=", request.actionName)
 		.execute();
 
+	debugLog(config, "⚡ Found action attributes:", actionAttrs.length);
 	actionAttrs.forEach((attr) => {
-		attributeMap.set(`action.${attr.name}`, {
+		const key = `action.${attr.name}`;
+		attributeMap.set(key, {
 			id: attr.id,
 			name: attr.name,
 			type: attr.type,
 			category: attr.category,
 			value: attr.value,
 		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
 	});
 
+	debugLog(config, "🔄 Adding dynamic action attribute...");
+	attributeMap.set("action.action_name", {
+		id: "dynamic-action-name",
+		name: "action_name",
+		type: "string",
+		category: "action",
+		value: request.actionName,
+	});
+	debugLog(config, `   ✓ action.action_name = "${request.actionName}"`);
+
+	// Also add resource type if provided
+	if (request.resourceType) {
+		debugLog(config, "🔄 Adding dynamic resource type attribute...");
+		attributeMap.set("resource.resource_type", {
+			id: "dynamic-resource-type",
+			name: "resource_type",
+			type: "string",
+			category: "resource",
+			value: request.resourceType,
+		});
+		debugLog(config, `   ✓ resource.resource_type = "${request.resourceType}"`);
+	}
+
 	// Get environment attributes
+	debugLog(config, "🌍 Gathering environment attributes...");
 	const envAttrs = await db
 		.selectFrom("environment_attribute")
 		.innerJoin(
@@ -296,18 +384,28 @@ async function gatherAttributes(
 		)
 		.execute();
 
+	debugLog(config, "🌍 Found environment attributes:", envAttrs.length);
 	envAttrs.forEach((attr) => {
-		attributeMap.set(`environment.${attr.name}`, {
+		const key = `environment.${attr.name}`;
+		attributeMap.set(key, {
 			id: attr.id,
 			name: attr.name,
 			type: attr.type,
 			category: attr.category,
 			value: attr.value,
 		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
 	});
 
 	// Add dynamic environment attributes
-	addDynamicEnvironmentAttributes(attributeMap, request.context);
+	addDynamicEnvironmentAttributes(attributeMap, request.context, config);
+
+	debugLog(config, "\n📋 === FINAL ATTRIBUTE MAP ===");
+	if (config?.debug) {
+		for (const [key, value] of attributeMap) {
+			debugLog(config, `   ${key} = "${value.value}" (${value.type})`);
+		}
+	}
 
 	return attributeMap;
 }
@@ -317,8 +415,11 @@ async function gatherAttributes(
  */
 function addDynamicEnvironmentAttributes(
 	attributeMap: Map<string, AttributeValue>,
-	context?: Record<string, any>
+	context?: Record<string, any>,
+	config?: AuthorizationConfig
 ) {
+	debugLog(config, "🔄 Adding dynamic environment attributes...");
+
 	// Current time
 	attributeMap.set("environment.current_time", {
 		id: "env-current-time",
@@ -327,26 +428,35 @@ function addDynamicEnvironmentAttributes(
 		category: "environment",
 		value: new Date().toISOString(),
 	});
+	debugLog(
+		config,
+		`   ✓ environment.current_time = "${new Date().toISOString()}"`
+	);
 
 	// Current day of week
+	const dayOfWeek = new Date().getDay().toString();
 	attributeMap.set("environment.day_of_week", {
 		id: "env-day-of-week",
 		name: "day_of_week",
 		type: "string",
 		category: "environment",
-		value: new Date().getDay().toString(),
+		value: dayOfWeek,
 	});
+	debugLog(config, `   ✓ environment.day_of_week = "${dayOfWeek}"`);
 
 	// Add context attributes
 	if (context) {
+		debugLog(config, "🎯 Adding context attributes...");
 		Object.entries(context).forEach(([key, value]) => {
-			attributeMap.set(`environment.${key}`, {
+			const envKey = `environment.${key}`;
+			attributeMap.set(envKey, {
 				id: `ctx-${key}`,
 				name: key,
 				type: typeof value,
 				category: "environment",
 				value: String(value),
 			});
+			debugLog(config, `   ✓ ${envKey} = "${value}"`);
 		});
 	}
 }
@@ -357,9 +467,11 @@ function addDynamicEnvironmentAttributes(
 async function findApplicablePolicies(
 	db: Kysely<Database>,
 	request: AuthorizationRequest,
-	attributes: Map<string, AttributeValue>
+	attributes: Map<string, AttributeValue>,
+	config?: AuthorizationConfig
 ): Promise<PolicyWithRules[]> {
 	// Get all active policies
+	debugLog(config, "🔍 Finding all active policies...");
 	const policies = await db
 		.selectFrom("policy")
 		.selectAll()
@@ -367,9 +479,13 @@ async function findApplicablePolicies(
 		.orderBy("priority", "desc")
 		.execute();
 
+	debugLog(config, `📋 Found ${policies.length} active policies`);
+
 	const policiesWithRulesAndTargets: PolicyWithRules[] = [];
 
 	for (const policy of policies) {
+		debugLog(config, `\n🎯 Processing policy: "${policy.name}" (${policy.id})`);
+
 		// Get rules for this policy
 		const rules = await db
 			.selectFrom("policy_rule")
@@ -385,6 +501,16 @@ async function findApplicablePolicies(
 			])
 			.where("policy_rule.policy_id", "=", policy.id)
 			.execute();
+
+		debugLog(config, `   📜 Found ${rules.length} rules for this policy`);
+		rules.forEach((rule, index) => {
+			debugLog(
+				config,
+				`      Rule ${index + 1}: ${rule.attributeName} ${rule.operator} "${
+					rule.value
+				}"`
+			);
+		});
 
 		// Get targets for this policy
 		const targets = await db
@@ -402,6 +528,25 @@ async function findApplicablePolicies(
 			.where("policy_target.policy_id", "=", policy.id)
 			.execute();
 
+		debugLog(config, `   🎯 Found ${targets.length} targets for this policy`);
+		targets.forEach((target, index) => {
+			debugLog(
+				config,
+				`      Target ${index + 1}: ${target.target_type}.${
+					target.attributeName
+				} ${target.operator} "${target.value}"`
+			);
+		});
+
+		// Skip policies that have no rules AND no targets
+		if (rules.length === 0 && targets.length === 0) {
+			debugLog(
+				config,
+				`   ⏭️ Skipping policy "${policy.name}" - no rules or targets defined`
+			);
+			continue;
+		}
+
 		policiesWithRulesAndTargets.push({
 			policy,
 			rules,
@@ -417,21 +562,40 @@ async function findApplicablePolicies(
  */
 async function evaluatePolicies(
 	policies: PolicyWithRules[],
-	attributes: Map<string, AttributeValue>
+	attributes: Map<string, AttributeValue>,
+	config?: AuthorizationConfig
 ): Promise<PolicyEvaluation[]> {
 	const evaluations: PolicyEvaluation[] = [];
+
+	debugLog(config, `\n⚖️ Evaluating ${policies.length} policies...`);
 
 	for (const policyData of policies) {
 		const { policy, rules, targets } = policyData;
 
+		debugLog(config, `\n🔍 Evaluating policy: "${policy.name}"`);
+
 		// Check if policy targets match
-		const targetMatches = evaluateTargets(targets, attributes);
+		debugLog(config, "   🎯 Checking targets...");
+		const targetMatches = evaluateTargets(targets, attributes, config);
+		debugLog(
+			config,
+			`   🎯 Target result: ${targetMatches ? "✅ PASS" : "❌ FAIL"}`
+		);
+
 		if (!targetMatches) {
+			debugLog(config, "   ⏭️ Skipping policy due to target mismatch");
 			continue; // Skip this policy if targets don't match
 		}
 
 		// Evaluate policy rules
-		const ruleMatches = evaluateRules(rules, attributes);
+		debugLog(config, "   📜 Checking rules...");
+		const ruleMatches = evaluateRules(rules, attributes, config);
+		debugLog(
+			config,
+			`   📜 Rule result: ${ruleMatches.matches ? "✅ PASS" : "❌ FAIL"} - ${
+				ruleMatches.reason
+			}`
+		);
 
 		evaluations.push({
 			policyId: policy.id,
@@ -440,8 +604,14 @@ async function evaluatePolicies(
 			matches: ruleMatches.matches,
 			reason: ruleMatches.reason,
 		});
+
+		debugLog(
+			config,
+			`   🏷️ Policy added to evaluations: effect=${policy.effect}, matches=${ruleMatches.matches}`
+		);
 	}
 
+	debugLog(config, `\n📊 Total policies evaluated: ${evaluations.length}`);
 	return evaluations;
 }
 
@@ -450,22 +620,66 @@ async function evaluatePolicies(
  */
 function evaluateTargets(
 	targets: any[],
-	attributes: Map<string, AttributeValue>
+	attributes: Map<string, AttributeValue>,
+	config?: AuthorizationConfig
 ): boolean {
-	if (!targets || targets.length === 0) return true;
+	if (!targets || targets.length === 0) {
+		debugLog(config, "      🎯 No targets defined - returning true");
+		return true;
+	}
 
-	return targets.every((target) => {
-		if (!target.attribute_id) return true;
+	debugLog(config, `      🎯 Evaluating ${targets.length} targets:`);
+
+	return targets.every((target, index) => {
+		if (!target.attribute_id) {
+			debugLog(
+				config,
+				`         Target ${index + 1}: No attribute_id - returning true`
+			);
+			return true;
+		}
 
 		const attrKey = `${target.target_type}.${target.attributeName}`;
-		const attribute = attributes.get(attrKey);
+		debugLog(
+			config,
+			`         Target ${index + 1}: Looking for attribute key: "${attrKey}"`
+		);
 
-		if (!attribute) return false;
+		const attribute = attributes.get(attrKey);
+		debugLog(
+			config,
+			`         Target ${index + 1}: Found attribute: ${
+				attribute ? `"${attribute.value}"` : "❌ NOT FOUND"
+			}`
+		);
+
+		if (!attribute) {
+			debugLog(
+				config,
+				`         Target ${index + 1}: ❌ FAIL - Attribute not found`
+			);
+			return false;
+		}
 
 		const operator = OPERATORS[target.operator as keyof typeof OPERATORS];
-		if (!operator) return false;
+		if (!operator) {
+			debugLog(
+				config,
+				`         Target ${index + 1}: ❌ FAIL - Unknown operator: ${
+					target.operator
+				}`
+			);
+			return false;
+		}
 
-		return operator(attribute.value, target.value);
+		const result = operator(attribute.value, target.value);
+		debugLog(
+			config,
+			`         Target ${index + 1}: "${attribute.value}" ${target.operator} "${
+				target.value
+			}" = ${result ? "✅ PASS" : "❌ FAIL"}`
+		);
+		return result;
 	});
 }
 
@@ -474,11 +688,15 @@ function evaluateTargets(
  */
 function evaluateRules(
 	rules: any[],
-	attributes: Map<string, AttributeValue>
+	attributes: Map<string, AttributeValue>,
+	config?: AuthorizationConfig
 ): { matches: boolean; reason?: string } {
 	if (!rules || rules.length === 0) {
+		debugLog(config, "      📜 No rules defined - returning true");
 		return { matches: true };
 	}
+
+	debugLog(config, `      📜 Evaluating ${rules.length} rules:`);
 
 	// Group rules by groupId
 	const ruleGroups = new Map<string, any[]>();
@@ -491,16 +709,37 @@ function evaluateRules(
 		ruleGroups.get(groupId)!.push(rule);
 	});
 
+	debugLog(
+		config,
+		`      📜 Rule groups: ${Array.from(ruleGroups.keys()).join(", ")}`
+	);
+
 	// Evaluate each group
 	const groupResults: boolean[] = [];
 
 	for (const [groupId, groupRules] of ruleGroups) {
-		const groupResult = evaluateRuleGroup(groupRules, attributes);
+		debugLog(
+			config,
+			`         📦 Evaluating group "${groupId}" with ${groupRules.length} rules:`
+		);
+		const groupResult = evaluateRuleGroup(groupRules, attributes, config);
+		debugLog(
+			config,
+			`         📦 Group "${groupId}" result: ${
+				groupResult ? "✅ PASS" : "❌ FAIL"
+			}`
+		);
 		groupResults.push(groupResult);
 	}
 
 	// All groups must be true (AND between groups)
 	const finalResult = groupResults.every((result) => result);
+	debugLog(
+		config,
+		`      📜 Final rule result: ${
+			finalResult ? "✅ PASS" : "❌ FAIL"
+		} (AND of all groups)`
+	);
 
 	return {
 		matches: finalResult,
@@ -515,16 +754,35 @@ function evaluateRules(
  */
 function evaluateRuleGroup(
 	rules: any[],
-	attributes: Map<string, AttributeValue>
+	attributes: Map<string, AttributeValue>,
+	config?: AuthorizationConfig
 ): boolean {
 	if (rules.length === 0) return true;
 
 	let result = true;
 	let currentOperator = "AND";
 
-	for (const rule of rules) {
+	for (const [index, rule] of rules.entries()) {
+		debugLog(
+			config,
+			`            🔍 Rule ${index + 1}: Looking for attribute "${
+				rule.attributeName
+			}"`
+		);
+
 		const attribute = findAttributeByName(rule.attributeName, attributes);
+		debugLog(
+			config,
+			`            🔍 Rule ${index + 1}: Found attribute: ${
+				attribute ? `"${attribute.value}"` : "❌ NOT FOUND"
+			}`
+		);
+
 		if (!attribute) {
+			debugLog(
+				config,
+				`            🔍 Rule ${index + 1}: ❌ FAIL - Attribute not found`
+			);
 			if (currentOperator === "AND") {
 				result = false;
 			}
@@ -533,6 +791,12 @@ function evaluateRuleGroup(
 
 		const operator = OPERATORS[rule.operator as keyof typeof OPERATORS];
 		if (!operator) {
+			debugLog(
+				config,
+				`            🔍 Rule ${index + 1}: ❌ FAIL - Unknown operator: ${
+					rule.operator
+				}`
+			);
 			if (currentOperator === "AND") {
 				result = false;
 			}
@@ -540,14 +804,32 @@ function evaluateRuleGroup(
 		}
 
 		const ruleResult = operator(attribute.value, rule.value);
+		debugLog(
+			config,
+			`            🔍 Rule ${index + 1}: "${attribute.value}" ${
+				rule.operator
+			} "${rule.value}" = ${ruleResult ? "✅ PASS" : "❌ FAIL"}`
+		);
 
 		if (currentOperator === "AND") {
 			result = result && ruleResult;
+			debugLog(
+				config,
+				`            🔍 Rule ${index + 1}: AND result so far: ${result}`
+			);
 		} else if (currentOperator === "OR") {
 			result = result || ruleResult;
+			debugLog(
+				config,
+				`            🔍 Rule ${index + 1}: OR result so far: ${result}`
+			);
 		}
 
 		currentOperator = rule.logical_operator || "AND";
+		debugLog(
+			config,
+			`            🔍 Rule ${index + 1}: Next operator: ${currentOperator}`
+		);
 	}
 
 	return result;
@@ -574,22 +856,31 @@ function findAttributeByName(
  */
 function makeFinalDecision(
 	evaluations: PolicyEvaluation[],
-	policies: PolicyWithRules[]
+	policies: PolicyWithRules[],
+	config?: AuthorizationConfig
 ): {
-	decision: "permit" | "deny" | "not_applicable";
+	decision: "permit" | "deny";
 	reason: string;
 } {
+	debugLog(
+		config,
+		`\n🏁 Making final decision from ${evaluations.length} evaluations...`
+	);
+
 	if (evaluations.length === 0) {
+		debugLog(config, "🏁 No applicable policies found");
 		return {
-			decision: "not_applicable",
+			decision: "deny",
 			reason: "No applicable policies found",
 		};
 	}
 
 	// Filter to only matching policies
 	const matchingEvaluations = evaluations.filter((e) => e.matches);
+	debugLog(config, `🏁 Found ${matchingEvaluations.length} matching policies`);
 
 	if (matchingEvaluations.length === 0) {
+		debugLog(config, "🏁 No matching policies found");
 		return {
 			decision: "deny",
 			reason: "No matching policies found",
@@ -609,11 +900,30 @@ function makeFinalDecision(
 		return priorityB - priorityA; // Descending order (highest priority first)
 	});
 
+	debugLog(config, "🏁 Sorted matching policies by priority:");
+	sortedEvaluations.forEach((evals, index) => {
+		const priority = policyPriorityMap.get(evals.policyId) || 0;
+		debugLog(
+			config,
+			`   ${index + 1}. "${evals.policyName}" (priority: ${priority}, effect: ${
+				evals.effect
+			})`
+		);
+	});
+
 	// Return the decision of the highest priority matching policy
 	const highestPriorityPolicy = sortedEvaluations[0];
+	const decision =
+		highestPriorityPolicy.effect === "permit" ? "permit" : "deny";
+	debugLog(
+		config,
+		`🏁 Selected highest priority policy: "${
+			highestPriorityPolicy.policyName
+		}" -> ${decision.toUpperCase()}`
+	);
 
 	return {
-		decision: highestPriorityPolicy.effect === "permit" ? "permit" : "deny",
+		decision,
 		reason: `${
 			highestPriorityPolicy.effect === "permit" ? "Permitted" : "Denied"
 		} by highest priority policy: ${highestPriorityPolicy.policyName}`,
@@ -647,6 +957,12 @@ async function logAccessRequest(
 				.where("resource_id", "=", request.resourceId)
 				.executeTakeFirst();
 			resourceId = resource?.id || request.resourceId;
+		}
+
+		if (!resourceId || resourceId === "") {
+			// If no resource ID is found, we can't log the access request
+			console.warn("No resource ID found for logging access request");
+			return;
 		}
 
 		await db
@@ -684,14 +1000,19 @@ export async function canUserRead(
 	db: Kysely<Database>,
 	userId: string,
 	resourceId: string,
-	context?: Record<string, any>
+	context?: Record<string, any>,
+	config?: AuthorizationConfig
 ) {
-	return canUserPerformAction(db, {
-		subjectId: userId,
-		resourceId,
-		actionName: "read",
-		context,
-	});
+	return canUserPerformAction(
+		db,
+		{
+			subjectId: userId,
+			resourceId,
+			actionName: "read",
+			context,
+		},
+		config
+	);
 }
 
 /**
@@ -701,14 +1022,19 @@ export async function canUserWrite(
 	db: Kysely<Database>,
 	userId: string,
 	resourceId: string,
-	context?: Record<string, any>
+	context?: Record<string, any>,
+	config?: AuthorizationConfig
 ) {
-	return canUserPerformAction(db, {
-		subjectId: userId,
-		resourceId,
-		actionName: "write",
-		context,
-	});
+	return canUserPerformAction(
+		db,
+		{
+			subjectId: userId,
+			resourceId,
+			actionName: "write",
+			context,
+		},
+		config
+	);
 }
 
 /**
@@ -718,14 +1044,19 @@ export async function canUserDelete(
 	db: Kysely<Database>,
 	userId: string,
 	resourceId: string,
-	context?: Record<string, any>
+	context?: Record<string, any>,
+	config?: AuthorizationConfig
 ) {
-	return canUserPerformAction(db, {
-		subjectId: userId,
-		resourceId,
-		actionName: "delete",
-		context,
-	});
+	return canUserPerformAction(
+		db,
+		{
+			subjectId: userId,
+			resourceId,
+			actionName: "delete",
+			context,
+		},
+		config
+	);
 }
 
 /**
@@ -736,18 +1067,23 @@ export async function canUserPerformActionOnResources(
 	userId: string,
 	actionName: string,
 	resourceIds: string[],
-	context?: Record<string, any>
+	context?: Record<string, any>,
+	config?: AuthorizationConfig
 ): Promise<Record<string, AuthorizationResult>> {
 	const results: Record<string, AuthorizationResult> = {};
 
 	// Process in parallel for better performance
 	const promises = resourceIds.map(async (resourceId) => {
-		const result = await canUserPerformAction(db, {
-			subjectId: userId,
-			resourceId,
-			actionName,
-			context,
-		});
+		const result = await canUserPerformAction(
+			db,
+			{
+				subjectId: userId,
+				resourceId,
+				actionName,
+				context,
+			},
+			config
+		);
 		return { resourceId, result };
 	});
 

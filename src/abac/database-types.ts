@@ -170,6 +170,7 @@ export interface Role {
 	id: string;
 	name: string;
 	updated_at: Date | null;
+	default_role: Boolean | null;
 }
 
 export interface RoleAttribute {
