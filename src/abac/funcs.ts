@@ -1095,3 +1095,81 @@ export async function canUserPerformActionOnResources(
 
 	return results;
 }
+
+/**
+ * Get user and their attributes (including role attributes)
+ */
+export async function gatherUserAttributes(
+	db: Kysely<Database>,
+	userId: string,
+	config?: AuthorizationConfig
+): Promise<{ userId: string; attributes: Map<string, AttributeValue> }> {
+	const attributeMap = new Map<string, AttributeValue>();
+
+	debugLog(config, "🔍 Gathering user attributes for:", userId);
+
+	// Get subject attributes (user attributes)
+	const subjectAttrs = await db
+		.selectFrom("user_attribute")
+		.innerJoin("attribute", "user_attribute.attribute_id", "attribute.id")
+		.select([
+			"attribute.id",
+			"attribute.name",
+			"attribute.type",
+			"attribute.category",
+			"user_attribute.value",
+		])
+		.where("user_attribute.user_id", "=", userId)
+		.execute();
+
+	debugLog(config, "👤 Found subject attributes:", subjectAttrs.length);
+	subjectAttrs.forEach((attr) => {
+		const key = `subject.${attr.name}`;
+		attributeMap.set(key, {
+			id: attr.id,
+			name: attr.name,
+			type: attr.type,
+			category: attr.category,
+			value: attr.value,
+		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
+	});
+
+	// Get role attributes for the user
+	debugLog(config, "🎭 Gathering role attributes...");
+	const roleAttrs = await db
+		.selectFrom("user")
+		.innerJoin("role_attribute", "user.role_id", "role_attribute.role_id")
+		.innerJoin("attribute", "role_attribute.attribute_id", "attribute.id")
+		.select([
+			"attribute.id",
+			"attribute.name",
+			"attribute.type",
+			"attribute.category",
+			"role_attribute.value",
+		])
+		.where("user.id", "=", userId)
+		.execute();
+
+	debugLog(config, "🎭 Found role attributes:", roleAttrs.length);
+	roleAttrs.forEach((attr) => {
+		const key = `subject.${attr.name}`;
+		attributeMap.set(key, {
+			id: attr.id,
+			name: attr.name,
+			type: attr.type,
+			category: attr.category,
+			value: attr.value,
+		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
+	});
+
+	debugLog(config, "\n📋 === USER ATTRIBUTE MAP ===");
+	if (config?.debug) {
+		for (const [key, value] of attributeMap) {
+			debugLog(config, `   ${key} = "${value.value}" (${value.type})`);
+		}
+	}
+
+	return { userId, attributes: attributeMap };
+}
