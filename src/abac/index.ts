@@ -620,6 +620,55 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						context: z.record(z.any()), // This is equivalent to Record<string, any>
 						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserPerformAction",
+							summary: "Check if a user can perform an action on a resource",
+							description:
+								"This endpoint checks if a user can perform a specific action on a resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can perform the action",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					// Gather attributes for the subject
@@ -659,6 +708,55 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
 						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserRead",
+							summary: "Check if a user can read a resource",
+							description:
+								"This endpoint checks if a user can read a specific resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can read the resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
@@ -692,6 +790,55 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
 						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserWrite",
+							summary: "Check if a user can write to a resource",
+							description:
+								"This endpoint checks if a user can write to a specific resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can write to the resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
@@ -724,6 +871,55 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserDelete",
+							summary: "Check if a user can delete a resource",
+							description:
+								"This endpoint checks if a user can delete a specific resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can delete the resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
@@ -757,6 +953,61 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
 						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserPerformActionOnResources",
+							summary:
+								"Check if a user can perform an action on multiple resources",
+							description:
+								"This endpoint checks if a user can perform a specific action on multiple resources based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decisions on whether the user can perform the action on each resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decisions: {
+														type: "array",
+														items: {
+															type: "object",
+															properties: {
+																resourceId: { type: "string" },
+																decision: {
+																	type: "enum",
+																	items: ["permit", "deny", "not_applicable"],
+																},
+																reason: { type: "string", nullable: true },
+																appliedPolicies: {
+																	type: "array",
+																	items: {
+																		type: "object",
+																		properties: {
+																			policyId: { type: "string" },
+																			policyName: { type: "string" },
+																		},
+																	},
+																},
+																evaluationTimeMs: { type: "number" },
+															},
+															required: [
+																"resourceId",
+																"decision",
+																"appliedPolicies",
+																"evaluationTimeMs",
+															],
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const { userId, actionName, resourceIds, context } = ctx.body;
@@ -792,6 +1043,12 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId: z.string(),
 						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "gatherUserAttributes",
+							summary: "Gather attributes for a user",
+						},
+					},
 				},
 				async (ctx) => {
 					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
