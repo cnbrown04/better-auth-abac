@@ -12,6 +12,7 @@ import {
 	type AttributeValue,
 	type PolicyEvaluation,
 	type PolicyWithRules,
+	gatherUserAttributes,
 } from "./funcs";
 import { Kysely } from "kysely";
 import { type Database } from "./database-types";
@@ -617,6 +618,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						resourceType: z.string().optional(),
 						actionName: z.string(),
 						context: z.record(z.any()), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
 				},
 				async (ctx) => {
@@ -639,7 +641,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 							actionName: ctx.body.actionName,
 							context: ctx.body.context,
 						},
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 
 					return {
@@ -655,6 +657,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId: z.string().optional(),
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
 				},
 				async (ctx) => {
@@ -672,7 +675,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId,
 						ctx.body.resourceId,
 						ctx.body.context,
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 					return {
 						decision,
@@ -687,6 +690,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId: z.string().optional(),
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
 				},
 				async (ctx) => {
@@ -704,7 +708,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId,
 						ctx.body.resourceId,
 						ctx.body.context,
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 					return {
 						decision,
@@ -751,6 +755,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						actionName: z.string(),
 						resourceIds: z.array(z.string()),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
 				},
 				async (ctx) => {
@@ -771,11 +776,39 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						actionName,
 						resourceIds,
 						context,
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 
 					return {
 						decisions,
+					};
+				}
+			),
+			gatherUserAttributes: createAuthEndpoint(
+				"/abac/gatheruserattributes",
+				{
+					method: "POST",
+					body: z.object({
+						userId: z.string(),
+						debug: z.boolean().optional().default(false),
+					}),
+				},
+				async (ctx) => {
+					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
+
+					if (!userId) {
+						throw ctx.error("BAD_REQUEST", {
+							message: "No User ID provided or found in session.",
+							status: 400,
+						});
+					}
+
+					const attributes = await gatherUserAttributes(db, userId, {
+						debug: debugLogs ?? ctx.body.debug,
+					});
+
+					return {
+						attributes,
 					};
 				}
 			),
