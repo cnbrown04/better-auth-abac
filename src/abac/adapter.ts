@@ -38,6 +38,10 @@ interface AbacAdapterConfig {
 	db: MysqlConfig | PostgresConfig | SqliteConfig;
 }
 
+interface AbacAdapter extends Kysely<Database> {
+	dispose(): Promise<void>;
+}
+
 async function createDialect(
 	config: MysqlConfig | PostgresConfig | SqliteConfig
 ): Promise<Dialect> {
@@ -177,7 +181,7 @@ async function createDialect(
 
 async function createAbacAdapter(
 	config: AbacAdapterConfig
-): Promise<Kysely<Database>> {
+): Promise<AbacAdapter> {
 	/*******************************************************************
 	 * Kysely ABAC Plugin DB Config
 	 * EDIT ONLY BELOW THIS LINE
@@ -192,9 +196,61 @@ async function createAbacAdapter(
 	 * EDIT ONLY ABOVE THIS LINE
 	 ******************************************************************/
 
-	return new Kysely<Database>({
+	const db = new Kysely<Database>({
 		dialect,
 	});
+
+	// Store reference to the raw database connection for cleanup
+	let rawConnection: any = null;
+	
+	// Extract raw connection based on database type
+	if (config.db.type === 'mysql') {
+		// @ts-ignore - accessing internal pool property
+		rawConnection = (dialect as any).pool;
+	} else if (config.db.type === 'postgres') {
+		// @ts-ignore - accessing internal pool property
+		rawConnection = (dialect as any).pool;
+	} else if (config.db.type === 'sqlite') {
+		// @ts-ignore - accessing internal database property
+		rawConnection = (dialect as any).database;
+	}
+
+	// Extend the Kysely instance with disposal method
+	const adapter = Object.assign(db, {
+		async dispose(): Promise<void> {
+			try {
+				// Destroy the Kysely instance
+				if (typeof db.destroy === 'function') {
+					await db.destroy();
+				}
+				
+				// Clean up raw connections
+				if (rawConnection) {
+					if (config.db.type === 'mysql' || config.db.type === 'postgres') {
+						// For MySQL and PostgreSQL pools
+						if (typeof rawConnection.end === 'function') {
+							await rawConnection.end();
+						} else if (typeof rawConnection.destroy === 'function') {
+							await rawConnection.destroy();
+						}
+					} else if (config.db.type === 'sqlite') {
+						// For SQLite database
+						if (typeof rawConnection.close === 'function') {
+							rawConnection.close();
+						}
+					}
+				}
+				
+				// Clear reference
+				rawConnection = null;
+			} catch (error) {
+				console.error('Error disposing database adapter:', error);
+				throw error;
+			}
+		}
+	}) as AbacAdapter;
+
+	return adapter;
 }
 
 // Usage examples:
@@ -219,4 +275,4 @@ async function createAbacAdapter(
 //   }
 // });
 
-export { createAbacAdapter };
+export { createAbacAdapter, type AbacAdapter };
