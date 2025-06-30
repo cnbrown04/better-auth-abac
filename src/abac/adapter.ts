@@ -68,8 +68,6 @@ async function createDialect(
 						connectionLimit: config.connectionLimit ?? 5,
 						waitForConnections: config.waitForConnections ?? true,
 						queueLimit: config.queueLimit ?? 0,
-						acquireTimeout: 60000,
-						timeout: 60000,
 						idleTimeout: 300000,
 						maxIdle: 2,
 					}),
