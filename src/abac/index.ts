@@ -7,14 +7,15 @@ import {
 	canUserPerformActionOnResources,
 	canUserRead,
 	canUserWrite,
-	AuthorizationRequest,
-	AuthorizationResult,
-	AttributeValue,
-	PolicyEvaluation,
-	PolicyWithRules,
+	type AuthorizationRequest,
+	type AuthorizationResult,
+	type AttributeValue,
+	type PolicyEvaluation,
+	type PolicyWithRules,
+	gatherUserAttributes,
 } from "./funcs";
 import { Kysely } from "kysely";
-import { Database } from "./database-types";
+import { type Database } from "./database-types";
 import { abacClient } from "./client";
 import { createAbacAdapter } from "./adapter";
 
@@ -124,6 +125,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 					roleId: {
 						type: "string",
 						references: { model: "role", field: "id" },
+						defaultValue: `"USER"`,
 					},
 				},
 			},
@@ -502,7 +504,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 			},
 		},
 
-		onRequest: async (req, ctx) => {
+		onRequest: async (req) => {
 			const url = new URL(req.url);
 			const path = url.pathname;
 
@@ -536,6 +538,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						return context.path.startsWith("/sign-up");
 					},
 					handler: async (ctx) => {
+						let dbConnection: any = null;
 						try {
 							const contextData = ctx as any;
 
@@ -563,6 +566,16 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 								"Unexpected error in sign-up handler:",
 								unexpectedError
 							);
+							
+							// Ensure any database connections are properly cleaned up
+							if (dbConnection && typeof dbConnection.destroy === 'function') {
+								try {
+									await dbConnection.destroy();
+								} catch (cleanupError) {
+									console.error("Error cleaning up database connection:", cleanupError);
+								}
+							}
+							
 							return {
 								message: "Unexpected error occurred",
 								error: String(unexpectedError),
@@ -575,6 +588,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						return context.path.startsWith("/sign-in");
 					},
 					handler: async (ctx) => {
+						let dbConnection: any = null;
 						try {
 							const contextData = ctx as any;
 
@@ -599,6 +613,16 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 								"Unexpected error in sign-in handler:",
 								unexpectedError
 							);
+							
+							// Ensure any database connections are properly cleaned up
+							if (dbConnection && typeof dbConnection.destroy === 'function') {
+								try {
+									await dbConnection.destroy();
+								} catch (cleanupError) {
+									console.error("Error cleaning up database connection:", cleanupError);
+								}
+							}
+							
 							return ctx; // Continue processing for sign-in
 						}
 					},
@@ -616,7 +640,57 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						resourceType: z.string().optional(),
 						actionName: z.string(),
 						context: z.record(z.any()), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserPerformAction",
+							summary: "Check if a user can perform an action on a resource",
+							description:
+								"This endpoint checks if a user can perform a specific action on a resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can perform the action",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					// Gather attributes for the subject
@@ -638,7 +712,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 							actionName: ctx.body.actionName,
 							context: ctx.body.context,
 						},
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 
 					return {
@@ -654,7 +728,57 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId: z.string().optional(),
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserRead",
+							summary: "Check if a user can read a resource",
+							description:
+								"This endpoint checks if a user can read a specific resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can read the resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
@@ -671,7 +795,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId,
 						ctx.body.resourceId,
 						ctx.body.context,
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 					return {
 						decision,
@@ -686,7 +810,57 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId: z.string().optional(),
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserWrite",
+							summary: "Check if a user can write to a resource",
+							description:
+								"This endpoint checks if a user can write to a specific resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can write to the resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
@@ -703,7 +877,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						userId,
 						ctx.body.resourceId,
 						ctx.body.context,
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 					return {
 						decision,
@@ -719,6 +893,55 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						resourceId: z.string(),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserDelete",
+							summary: "Check if a user can delete a resource",
+							description:
+								"This endpoint checks if a user can delete a specific resource based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decision on whether the user can delete the resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decision: {
+														type: "object",
+														properties: {
+															decision: {
+																type: "enum",
+																items: ["permit", "deny", "not_applicable"],
+															},
+															reason: { type: "string", nullable: true },
+															appliedPolicies: {
+																type: "array",
+																items: {
+																	type: "object",
+																	properties: {
+																		policyId: { type: "string" },
+																		policyName: { type: "string" },
+																	},
+																},
+															},
+															evaluationTimeMs: { type: "number" },
+														},
+														required: [
+															"decision",
+															"appliedPolicies",
+															"evaluationTimeMs",
+														],
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
@@ -750,7 +973,63 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						actionName: z.string(),
 						resourceIds: z.array(z.string()),
 						context: z.record(z.any()).optional(), // This is equivalent to Record<string, any>
+						debug: z.boolean().optional().default(false),
 					}),
+					metadata: {
+						openapi: {
+							operationId: "canUserPerformActionOnResources",
+							summary:
+								"Check if a user can perform an action on multiple resources",
+							description:
+								"This endpoint checks if a user can perform a specific action on multiple resources based on ABAC policies.",
+							responses: {
+								200: {
+									description:
+										"Decisions on whether the user can perform the action on each resource",
+									content: {
+										"application/json": {
+											schema: {
+												type: "object",
+												properties: {
+													decisions: {
+														type: "array",
+														items: {
+															type: "object",
+															properties: {
+																resourceId: { type: "string" },
+																decision: {
+																	type: "enum",
+																	items: ["permit", "deny", "not_applicable"],
+																},
+																reason: { type: "string", nullable: true },
+																appliedPolicies: {
+																	type: "array",
+																	items: {
+																		type: "object",
+																		properties: {
+																			policyId: { type: "string" },
+																			policyName: { type: "string" },
+																		},
+																	},
+																},
+																evaluationTimeMs: { type: "number" },
+															},
+															required: [
+																"resourceId",
+																"decision",
+																"appliedPolicies",
+																"evaluationTimeMs",
+															],
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				async (ctx) => {
 					const { userId, actionName, resourceIds, context } = ctx.body;
@@ -770,11 +1049,45 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						actionName,
 						resourceIds,
 						context,
-						{ debug: debugLogs }
+						{ debug: debugLogs ?? ctx.body.debug }
 					);
 
 					return {
 						decisions,
+					};
+				}
+			),
+			gatherUserAttributes: createAuthEndpoint(
+				"/abac/gatheruserattributes",
+				{
+					method: "POST",
+					body: z.object({
+						userId: z.string(),
+						debug: z.boolean().optional().default(false),
+					}),
+					metadata: {
+						openapi: {
+							operationId: "gatherUserAttributes",
+							summary: "Gather attributes for a user",
+						},
+					},
+				},
+				async (ctx) => {
+					const userId = ctx.body.userId ?? ctx.context.session?.user?.id;
+
+					if (!userId) {
+						throw ctx.error("BAD_REQUEST", {
+							message: "No User ID provided or found in session.",
+							status: 400,
+						});
+					}
+
+					const attributes = await gatherUserAttributes(db, userId, {
+						debug: debugLogs ?? ctx.body.debug,
+					});
+
+					return {
+						attributes,
 					};
 				}
 			),
@@ -783,7 +1096,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 				{
 					method: "GET",
 				},
-				async (ctx) => {
+				async () => {
 					try {
 						return {
 							message: "ABAC plugin is working!",

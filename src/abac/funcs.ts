@@ -54,6 +54,10 @@ export interface PolicyWithRules {
 	targets: any[];
 }
 
+// Attribute cache for reducing database queries
+const attributeCache = new Map<string, { attributes: Map<string, AttributeValue>; timestamp: number }>();
+const CACHE_TTL = 300000; // 5 minutes
+
 // Debug logging utility
 function debugLog(
 	config: AuthorizationConfig | undefined,
@@ -62,6 +66,16 @@ function debugLog(
 ) {
 	if (config?.debug) {
 		console.log(message, ...args);
+	}
+}
+
+// Cache cleanup to prevent memory growth
+function cleanupCache() {
+	const now = Date.now();
+	for (const [key, value] of attributeCache) {
+		if (now - value.timestamp > CACHE_TTL) {
+			attributeCache.delete(key);
+		}
 	}
 }
 
@@ -167,13 +181,27 @@ export async function canUserPerformAction(
 }
 
 /**
- * Gather all relevant attributes for the authorization request
+ * Gather all relevant attributes for the authorization request with caching
  */
 async function gatherAttributes(
 	db: Kysely<Database>,
 	request: AuthorizationRequest,
 	config?: AuthorizationConfig
 ): Promise<Map<string, AttributeValue>> {
+	// Clean up old cache entries periodically
+	if (Math.random() < 0.1) { // 10% chance to clean up on each call
+		cleanupCache();
+	}
+
+	// Create cache key based on request parameters
+	const cacheKey = `${request.subjectId}-${request.resourceId || 'no-resource'}-${request.actionName}`;
+	const cached = attributeCache.get(cacheKey);
+	
+	if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+		debugLog(config, "🎯 Using cached attributes for:", cacheKey);
+		return new Map(cached.attributes);
+	}
+
 	const attributeMap = new Map<string, AttributeValue>();
 
 	debugLog(
@@ -407,11 +435,17 @@ async function gatherAttributes(
 		}
 	}
 
+	// Cache the results
+	attributeCache.set(cacheKey, {
+		attributes: new Map(attributeMap),
+		timestamp: Date.now()
+	});
+
 	return attributeMap;
 }
 
 /**
- * Add dynamic environment attributes from context
+ * Add dynamic environment attributes from context - optimized for memory
  */
 function addDynamicEnvironmentAttributes(
 	attributeMap: Map<string, AttributeValue>,
@@ -420,21 +454,22 @@ function addDynamicEnvironmentAttributes(
 ) {
 	debugLog(config, "🔄 Adding dynamic environment attributes...");
 
+	// Reuse Date object to reduce allocation
+	const now = new Date();
+	const currentTimeString = now.toISOString();
+	
 	// Current time
 	attributeMap.set("environment.current_time", {
 		id: "env-current-time",
 		name: "current_time",
 		type: "string",
 		category: "environment",
-		value: new Date().toISOString(),
+		value: currentTimeString,
 	});
-	debugLog(
-		config,
-		`   ✓ environment.current_time = "${new Date().toISOString()}"`
-	);
+	debugLog(config, `   ✓ environment.current_time = "${currentTimeString}"`);
 
 	// Current day of week
-	const dayOfWeek = new Date().getDay().toString();
+	const dayOfWeek = now.getDay().toString();
 	attributeMap.set("environment.day_of_week", {
 		id: "env-day-of-week",
 		name: "day_of_week",
@@ -444,20 +479,26 @@ function addDynamicEnvironmentAttributes(
 	});
 	debugLog(config, `   ✓ environment.day_of_week = "${dayOfWeek}"`);
 
-	// Add context attributes
-	if (context) {
+	// Add context attributes - limit context size to prevent memory issues
+	if (context && Object.keys(context).length > 0) {
 		debugLog(config, "🎯 Adding context attributes...");
-		Object.entries(context).forEach(([key, value]) => {
+		const contextEntries = Object.entries(context).slice(0, 50); // Limit to 50 context attributes
+		
+		for (const [key, value] of contextEntries) {
 			const envKey = `environment.${key}`;
 			attributeMap.set(envKey, {
 				id: `ctx-${key}`,
 				name: key,
 				type: typeof value,
 				category: "environment",
-				value: String(value),
+				value: String(value).slice(0, 1000), // Limit value length to 1000 chars
 			});
 			debugLog(config, `   ✓ ${envKey} = "${value}"`);
-		});
+		}
+		
+		if (Object.keys(context).length > 50) {
+			console.warn(`Context has ${Object.keys(context).length} attributes, limiting to 50 for memory efficiency`);
+		}
 	}
 }
 
@@ -842,7 +883,7 @@ function findAttributeByName(
 	attributeName: string,
 	attributes: Map<string, AttributeValue>
 ): AttributeValue | undefined {
-	for (const [key, value] of attributes) {
+	for (const [_, value] of attributes) {
 		if (value.name === attributeName) {
 			return value;
 		}
@@ -931,7 +972,7 @@ function makeFinalDecision(
 }
 
 /**
- * Log the access request for auditing
+ * Log the access request for auditing - optimized for memory usage
  */
 async function logAccessRequest(
 	db: Kysely<Database>,
@@ -965,6 +1006,20 @@ async function logAccessRequest(
 			return;
 		}
 
+		// Optimize JSON stringification to reduce memory usage
+		const appliedPoliciesString = evaluations.length > 0 
+			? JSON.stringify(evaluations.map(e => ({
+				policyId: e.policyId,
+				policyName: e.policyName,
+				effect: e.effect,
+				matches: e.matches,
+			})))
+			: "[]";
+
+		const contextString = request.context && Object.keys(request.context).length > 0
+			? JSON.stringify(request.context)
+			: "{}";
+
 		await db
 			.insertInto("access_request")
 			.values({
@@ -973,15 +1028,8 @@ async function logAccessRequest(
 				resource_id: resourceId,
 				action_id: action?.id || request.actionName,
 				decision: decision.decision,
-				applied_policies: JSON.stringify(
-					evaluations.map((e) => ({
-						policyId: e.policyId,
-						policyName: e.policyName,
-						effect: e.effect,
-						matches: e.matches,
-					}))
-				),
-				request_context: JSON.stringify(request.context || {}),
+				applied_policies: appliedPoliciesString,
+				request_context: contextString,
 				processing_time_ms: processingTime,
 				created_at: new Date(),
 			})
@@ -1060,7 +1108,7 @@ export async function canUserDelete(
 }
 
 /**
- * Batch authorization check for multiple resources
+ * Batch authorization check for multiple resources with concurrency limiting
  */
 export async function canUserPerformActionOnResources(
 	db: Kysely<Database>,
@@ -1071,27 +1119,129 @@ export async function canUserPerformActionOnResources(
 	config?: AuthorizationConfig
 ): Promise<Record<string, AuthorizationResult>> {
 	const results: Record<string, AuthorizationResult> = {};
+	const BATCH_SIZE = 10; // Limit concurrent operations to prevent memory spikes
 
-	// Process in parallel for better performance
-	const promises = resourceIds.map(async (resourceId) => {
-		const result = await canUserPerformAction(
-			db,
-			{
-				subjectId: userId,
-				resourceId,
-				actionName,
-				context,
-			},
-			config
-		);
-		return { resourceId, result };
-	});
+	// Process resources in batches to limit memory usage
+	for (let i = 0; i < resourceIds.length; i += BATCH_SIZE) {
+		const batch = resourceIds.slice(i, i + BATCH_SIZE);
+		
+		const promises = batch.map(async (resourceId) => {
+			try {
+				const result = await canUserPerformAction(
+					db,
+					{
+						subjectId: userId,
+						resourceId,
+						actionName,
+						context,
+					},
+					config
+				);
+				return { resourceId, result, success: true };
+			} catch (error) {
+				debugLog(config, `Error processing resource ${resourceId}:`, error);
+				return {
+					resourceId,
+					result: {
+						decision: "indeterminate" as const,
+						reason: `Error processing resource: ${error instanceof Error ? error.message : 'Unknown error'}`,
+						appliedPolicies: [],
+						processingTimeMs: 0,
+					},
+					success: false
+				};
+			}
+		});
 
-	const resolvedResults = await Promise.all(promises);
+		const batchResults = await Promise.all(promises);
 
-	resolvedResults.forEach(({ resourceId, result }) => {
-		results[resourceId] = result;
-	});
+		batchResults.forEach(({ resourceId, result }) => {
+			results[resourceId] = result;
+		});
+
+		// Add small delay between batches to prevent overwhelming the database
+		if (i + BATCH_SIZE < resourceIds.length) {
+			await new Promise(resolve => setTimeout(resolve, 10));
+		}
+	}
 
 	return results;
+}
+
+/**
+ * Get user and their attributes (including role attributes)
+ */
+export async function gatherUserAttributes(
+	db: Kysely<Database>,
+	userId: string,
+	config?: AuthorizationConfig
+): Promise<{ userId: string; attributes: Map<string, AttributeValue> }> {
+	const attributeMap = new Map<string, AttributeValue>();
+
+	debugLog(config, "🔍 Gathering user attributes for:", userId);
+
+	// Get subject attributes (user attributes)
+	const subjectAttrs = await db
+		.selectFrom("user_attribute")
+		.innerJoin("attribute", "user_attribute.attribute_id", "attribute.id")
+		.select([
+			"attribute.id",
+			"attribute.name",
+			"attribute.type",
+			"attribute.category",
+			"user_attribute.value",
+		])
+		.where("user_attribute.user_id", "=", userId)
+		.execute();
+
+	debugLog(config, "👤 Found subject attributes:", subjectAttrs.length);
+	subjectAttrs.forEach((attr) => {
+		const key = `subject.${attr.name}`;
+		attributeMap.set(key, {
+			id: attr.id,
+			name: attr.name,
+			type: attr.type,
+			category: attr.category,
+			value: attr.value,
+		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
+	});
+
+	// Get role attributes for the user
+	debugLog(config, "🎭 Gathering role attributes...");
+	const roleAttrs = await db
+		.selectFrom("user")
+		.innerJoin("role_attribute", "user.role_id", "role_attribute.role_id")
+		.innerJoin("attribute", "role_attribute.attribute_id", "attribute.id")
+		.select([
+			"attribute.id",
+			"attribute.name",
+			"attribute.type",
+			"attribute.category",
+			"role_attribute.value",
+		])
+		.where("user.id", "=", userId)
+		.execute();
+
+	debugLog(config, "🎭 Found role attributes:", roleAttrs.length);
+	roleAttrs.forEach((attr) => {
+		const key = `subject.${attr.name}`;
+		attributeMap.set(key, {
+			id: attr.id,
+			name: attr.name,
+			type: attr.type,
+			category: attr.category,
+			value: attr.value,
+		});
+		debugLog(config, `   ✓ ${key} = "${attr.value}"`);
+	});
+
+	debugLog(config, "\n📋 === USER ATTRIBUTE MAP ===");
+	if (config?.debug) {
+		for (const [key, value] of attributeMap) {
+			debugLog(config, `   ${key} = "${value.value}" (${value.type})`);
+		}
+	}
+
+	return { userId, attributes: attributeMap };
 }
