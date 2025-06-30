@@ -538,6 +538,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						return context.path.startsWith("/sign-up");
 					},
 					handler: async (ctx) => {
+						let dbConnection: any = null;
 						try {
 							const contextData = ctx as any;
 
@@ -565,6 +566,16 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 								"Unexpected error in sign-up handler:",
 								unexpectedError
 							);
+							
+							// Ensure any database connections are properly cleaned up
+							if (dbConnection && typeof dbConnection.destroy === 'function') {
+								try {
+									await dbConnection.destroy();
+								} catch (cleanupError) {
+									console.error("Error cleaning up database connection:", cleanupError);
+								}
+							}
+							
 							return {
 								message: "Unexpected error occurred",
 								error: String(unexpectedError),
@@ -577,6 +588,7 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 						return context.path.startsWith("/sign-in");
 					},
 					handler: async (ctx) => {
+						let dbConnection: any = null;
 						try {
 							const contextData = ctx as any;
 
@@ -601,6 +613,16 @@ const abac = (db: Kysely<Database>, debugLogs: boolean) => {
 								"Unexpected error in sign-in handler:",
 								unexpectedError
 							);
+							
+							// Ensure any database connections are properly cleaned up
+							if (dbConnection && typeof dbConnection.destroy === 'function') {
+								try {
+									await dbConnection.destroy();
+								} catch (cleanupError) {
+									console.error("Error cleaning up database connection:", cleanupError);
+								}
+							}
+							
 							return ctx; // Continue processing for sign-in
 						}
 					},

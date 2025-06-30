@@ -32,6 +32,7 @@ interface SqliteConfig {
 	type: "sqlite";
 	uri: string; // Path to the SQLite database file
 	filename?: string; // Optional, overrides uri for file path
+	readonly?: boolean; // Open database in read-only mode
 }
 interface AbacAdapterConfig {
 	db: MysqlConfig | PostgresConfig | SqliteConfig;
@@ -64,9 +65,13 @@ async function createDialect(
 				return new MysqlDialect({
 					pool: createPool({
 						uri: config.uri,
-						connectionLimit: config.connectionLimit ?? 10,
+						connectionLimit: config.connectionLimit ?? 5,
 						waitForConnections: config.waitForConnections ?? true,
 						queueLimit: config.queueLimit ?? 0,
+						acquireTimeout: 60000,
+						timeout: 60000,
+						idleTimeout: 300000,
+						maxIdle: 2,
 					}),
 				});
 			} catch (error) {
@@ -96,7 +101,7 @@ async function createDialect(
 				return new PostgresDialect({
 					pool: new Pool({
 						connectionString: config.uri,
-						max: config.connectionLimit ?? 10,
+						max: config.connectionLimit ?? 5,
 						ssl: config.ssl ?? false,
 					}),
 				});
@@ -135,7 +140,18 @@ async function createDialect(
 
 				// Use filename if provided, otherwise use uri
 				const dbPath = config.filename || config.uri;
-				const db = new Database(dbPath);
+				const db = new Database(dbPath, {
+					readonly: config.readonly ?? false,
+					fileMustExist: false,
+					timeout: 5000,
+				});
+
+				// Configure SQLite for better memory management
+				db.pragma("journal_mode = WAL");
+				db.pragma("synchronous = NORMAL");
+				db.pragma("cache_size = -8000"); // 8MB cache
+				db.pragma("temp_store = MEMORY");
+				db.pragma("mmap_size = 268435456"); // 256MB mmap
 
 				return new SqliteDialect({
 					database: db,
