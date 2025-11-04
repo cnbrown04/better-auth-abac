@@ -1,4 +1,5 @@
-# IN BETA - IN DEVELOPMENT
+# ALPHA PROJECT - DO NOT USE IN PRODUCTION
+## Some serious issues regarding memory managment etc happen here with the database checks, I am developing a SpiceDB plugin eventually.
 
 # better-auth-abac
 
